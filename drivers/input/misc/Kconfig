@@ -808,6 +808,17 @@ config SENSORS_LTR553
 	  To compile this driver as a module, choose M here: the
 	  module will be called ltr553.
 
+config SENSORS_LTR559
+	tristate "LTR559 light and proximity device driver"
+	depends on I2C
+	default n
+	help
+	  Say Y here you want to enable for the liteon ltr559
+	  light and proximity sensors driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ltr559.
+
 config SENSORS_BMA2X2
 	tristate "BMA2x2 acceleration sensor support"
 	depends on I2C
