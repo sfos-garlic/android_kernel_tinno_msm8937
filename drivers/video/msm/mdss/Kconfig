@@ -88,3 +88,11 @@ config GPIO_TINNO_LCD_LDO
     default n
     ---help---
       Support the lcd gpio for vdd ldo
+
+config FB_MSM_MDSS_KCAL_CTRL
+	depends on FB_MSM_MDSS
+	bool "MDSS color control"
+	default n
+	---help---
+	  Enable sysfs for rgb/lut control for mdss-mdp display controllers
+	  in the MDSS sub-system.
