@@ -54,6 +54,8 @@ static int convert_prio(int prio)
 
 /**
  * cpupri_find - remove a cpu from the mask if it is likely non-preemptible
+ * drop_nopreempt_cpus - remove a cpu from the mask if it is likely
+ *			 non-preemptible
  * @lowest_mask: mask with selected CPUs (non-NULL)
  */
 static void
