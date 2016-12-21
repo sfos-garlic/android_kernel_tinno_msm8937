@@ -855,3 +855,10 @@ config DOUBLE_TAP
 	 If you say yes here, you get support Bosch double tap sensor function
 
 endif
+
+config LTR559
+	tristate "LTR559 sensor support"
+	depends on I2C
+	default n
+	help
+	  proximity sensor driver for LTR559
