@@ -1194,20 +1194,6 @@ static int ft5x06_ts_start(struct device *dev)
 	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
 	int err;
 
-	if (data->pdata->power_on) {
-		err = data->pdata->power_on(true);
-		if (err) {
-			dev_err(dev, "power on failed");
-			return err;
-		}
-	} else {
-		err = ft5x06_power_on(data, true);
-		if (err) {
-			dev_err(dev, "power on failed");
-			return err;
-		}
-	}
-
 	if (data->ts_pinctrl) {
 		err = pinctrl_select_state(data->ts_pinctrl,
 				data->pinctrl_state_active);
@@ -1224,6 +1210,20 @@ static int ft5x06_ts_start(struct device *dev)
 
 	if (gpio_is_valid(data->pdata->reset_gpio)) {
 		gpio_set_value_cansleep(data->pdata->reset_gpio, 0);
+		usleep_range(800, 1000);
+		if (data->pdata->power_on) {
+			err = data->pdata->power_on(true);
+			if (err) {
+				dev_err(dev, "power on failed");
+				goto err_gpio_configuration;
+			}
+		} else {
+			err = ft5x06_power_on(data, true);
+			if (err) {
+				dev_err(dev, "power on failed");
+				goto err_gpio_configuration;
+			}
+		}
 		msleep(data->pdata->hard_rst_dly);
 		gpio_set_value_cansleep(data->pdata->reset_gpio, 1);
 	}
@@ -1242,15 +1242,6 @@ err_gpio_configuration:
 					data->pinctrl_state_suspend);
 		if (err < 0)
 			dev_err(dev, "Cannot get suspend pinctrl state\n");
-	}
-	if (data->pdata->power_on) {
-		err = data->pdata->power_on(false);
-		if (err)
-			dev_err(dev, "power off failed");
-	} else {
-		err = ft5x06_power_on(data, false);
-		if (err)
-			dev_err(dev, "power off failed");
 	}
 	return err;
 }
