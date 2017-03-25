@@ -352,6 +352,7 @@ struct ft5x06_ts_data {
 	struct work_struct ps_notify_work;
 	struct notifier_block ps_notif;
 	bool ps_is_present;
+ 	bool is_tp_registered;
 };
 
 static int ft5x06_ts_start(struct device *dev);
@@ -3141,6 +3142,8 @@ void ft5x06_ts_shutdown(struct i2c_client *client)
 	struct ft5x06_ts_data *data = i2c_get_clientdata(client);
 	int retval;
 
+	if (!data->is_tp_registered)
+		return;
 	free_irq(client->irq, data);
 
 	if (gpio_is_valid(data->pdata->reset_gpio)) {
@@ -3234,6 +3237,7 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	data->force_reflash = (data->pdata->no_force_update) ? false : true;
 	data->flash_enabled = true;
 	data->irq_enabled = false;
+	data->is_tp_registered = false;
 
 	data->patching_enabled = true;
 	err = ft5x06_dt_parse_modifiers(data);
