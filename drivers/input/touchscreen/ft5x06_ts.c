@@ -36,6 +36,9 @@
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
 #include <linux/proc_fs.h>
+#if defined(CONFIG_TOUCHSCREEN_FOCALTECH_UPGRADE)
+#include "focaltech_flash.h"
+#endif
 
 #if (defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE) && !defined(CONFIG_TOUCHSCREEN_SWEEP2WAKE))
 #include <linux/input/doubletap2wake.h>
@@ -2480,13 +2483,21 @@ static ssize_t ft5x06_do_reflash_store(struct device *dev,
 			data->fw_name);
 
 	mutex_lock(&data->input_dev->mutex);
+	ft5x06_irq_disable(data);
 	data->loading_fw = true;
-	retval = ft5x06_fw_upgrade(dev, true);
+#if defined(CONFIG_TOUCHSCREEN_FOCALTECH_UPGRADE)
+		retval = fts_ctpm_auto_upgrade(data->client,
+				data->fw_name,
+				data->pdata);
+#else
+		retval = ft5x06_fw_upgrade(dev, true);
+#endif
 	if (retval)
 		dev_err(&data->client->dev,
 				"%s: FW %s upgrade failed\n",
 				__func__,
 				data->pdata->name);
+	ft5x06_irq_enable(data);
 	data->loading_fw = false;
 	mutex_unlock(&data->input_dev->mutex);
 
