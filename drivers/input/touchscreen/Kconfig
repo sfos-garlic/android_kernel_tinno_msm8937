@@ -1220,8 +1220,8 @@ config TOUCHSCREEN_FT5XX
          To compile this driver as a module, choose M here: the
          module will be called ft5xx_ts.
 
-config WAKE_GESTURES
-	bool "wake gestures"
+config SCREEN_OFF_GESTURES
+	bool "screen off gestures"
 endif
 
 config TOUCHSCREEN_SWEEP2WAKE
