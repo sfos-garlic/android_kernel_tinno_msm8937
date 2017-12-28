@@ -97,3 +97,5 @@ obj-$(CONFIG_TOUCHSCREEN_FT5364I)	+= ft5364i/
 obj-$(CONFIG_TOUCHSCREEN_FT5XX)		+= ft5xx/
 obj-$(CONFIG_TP_TGESTURE)		+= tgesture/
 obj-$(CONFIG_PLATFORM_V12BN) += high_sensitive.o
+obj-$(CONFIG_TOUCHSCREEN_SWEEP2WAKE)		+= sweep2wake.o
+obj-$(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)	+= doubletap2wake.o
