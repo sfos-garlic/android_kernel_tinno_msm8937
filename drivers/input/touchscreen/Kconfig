@@ -1220,12 +1220,14 @@ config TOUCHSCREEN_FT5XX
          To compile this driver as a module, choose M here: the
          module will be called ft5xx_ts.
 
+endif
+
 config TOUCHSCREEN_SWEEP2WAKE
-        tristate "Sweep2Wake for touchscreens"
-	select TOUCHSCREEN_PREVENT_SLEEP
+        bool "Sweep2Wake for touchscreens"
+	depends on !TOUCHSCREEN_FT5X06_GESTURE
         default n
 
 config TOUCHSCREEN_DOUBLETAP2WAKE
-	tristate "DoubleTap2Wake for touchscreens"
-	select TOUCHSCREEN_PREVENT_SLEEP
+	bool "DoubleTap2Wake for touchscreens"
+	depends on !TOUCHSCREEN_FT5X06_GESTURE
 	default n
