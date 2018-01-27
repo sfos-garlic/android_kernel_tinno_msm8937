@@ -410,3 +410,23 @@ bool msm_secure_v2_is_supported(void)
 	 */
 	return version >= MAKE_CP_VERSION(1, 1, 0);
 }
+
+static int __init alloc_secure_shared_memory(void)
+{
+	int ret = 0;
+	dma_addr_t dma_handle;
+
+	qcom_secure_mem = kzalloc(QCOM_SECURE_MEM_SIZE, GFP_KERNEL);
+	if (!qcom_secure_mem) {
+		/* Fallback to CMA-DMA memory */
+		qcom_secure_mem = dma_alloc_coherent(NULL, QCOM_SECURE_MEM_SIZE,
+						&dma_handle, GFP_KERNEL);
+		if (!qcom_secure_mem) {
+			pr_err("Couldn't allocate memory for secure use-cases. hyp_assign_table will not work\n");
+			return -ENOMEM;
+		}
+	}
+
+	return ret;
+}
+early_initcall(alloc_secure_shared_memory);
