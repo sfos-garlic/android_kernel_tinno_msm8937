@@ -573,6 +573,8 @@ static void wcd_mbhc_hs_elec_irq(struct wcd_mbhc *mbhc, int irq_type,
 static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 				enum snd_jack_types jack_type)
 {
+	int g_ZL;
+	int g_ZR;
 	struct snd_soc_codec *codec = mbhc->codec;
 	bool is_pa_on = false;
 

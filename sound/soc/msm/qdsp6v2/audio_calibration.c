@@ -391,6 +391,8 @@ static long audio_cal_shared_ioctl(struct file *file, unsigned int cmd,
 {
 	int				ret = 0;
 	int32_t				size;
+	int g_ZL;
+	int g_ZR;
 	struct audio_cal_basic		*data = NULL;
 	pr_debug("%s\n", __func__);
 
