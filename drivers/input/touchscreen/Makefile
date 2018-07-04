@@ -100,3 +100,4 @@ obj-$(CONFIG_PLATFORM_V12BN) += high_sensitive.o
 obj-$(CONFIG_TOUCHSCREEN_SWEEP2WAKE)		+= sweep2wake.o
 obj-$(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)	+= doubletap2wake.o
 obj-$(CONFIG_SCREEN_OFF_GESTURES)	+= screen_off_gestures.o
+obj-$(CONFIG_WAKE_GESTURES)		+= wake_gestures.o

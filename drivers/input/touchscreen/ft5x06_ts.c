@@ -61,6 +61,10 @@
 #include <linux/screen_off_gestures.h>
 #endif
 
+#ifdef CONFIG_WAKE_GESTURES
+#include <linux/wake_gestures.h>
+#endif
+
 #if defined(CONFIG_FT_SECURE_TOUCH)
 #include <linux/completion.h>
 #include <linux/atomic.h>
@@ -71,7 +75,6 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 
 #include <linux/usb.h>
 #include <linux/power_supply.h>
-
 
 #define FT_DRIVER_VERSION	0x02
 
@@ -438,6 +441,14 @@ struct ft5x06_ts_data {
 struct ft5x06_ts_data *ft5x06_ts = NULL;
 
 bool scr_suspended(void) {
+	return ft5x06_ts->suspended;
+}
+#endif
+
+#ifdef CONFIG_WAKE_GESTURES
+struct ft5x06_ts_data *ft5x06_ts = NULL;
+
+bool scr_suspended_ft(void) {
 	return ft5x06_ts->suspended;
 }
 #endif
@@ -1460,6 +1471,11 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *dev_id)
 			x += 5000;
 #endif
 
+#ifdef CONFIG_WAKE_GESTURES
+		if (data->suspended)
+			x += 5000;
+#endif
+
 		input_mt_slot(ip_dev, id);
 		if (status == FT_TOUCH_DOWN || status == FT_TOUCH_CONTACT) {
 			input_mt_report_slot_state(ip_dev, MT_TOOL_FINGER, 1);
@@ -1921,6 +1937,19 @@ static int ft5x06_ts_suspend(struct device *dev)
 	}
 #endif
 
+#ifdef CONFIG_WAKE_GESTURES
+	if (device_may_wakeup(dev) && (s2w_switch || dt2w_switch)) {
+		ft5x0x_write_reg(data->client, 0xD0, 1);
+		err = enable_irq_wake(data->client->irq);
+		if (err)
+			dev_err(&data->client->dev,
+				"%s: set_irq_wake failed\n", __func__);
+		data->suspended = true;
+
+		return err;
+	}
+#endif
+
 	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support &&
 		device_may_wakeup(dev) &&
 		data->psensor_pdata->tp_psensor_opened) {
@@ -1974,6 +2003,10 @@ static int ft5x06_ts_resume(struct device *dev)
 #ifdef CONFIG_SCREEN_OFF_GESTURES
 	int i;
 #endif
+
+#ifdef CONFIG_WAKE_GESTURES
+	int i;
+#endif
 	if (!data->suspended) {
 		dev_dbg(dev, "Already in awake state\n");
 		return 0;
@@ -2023,6 +2056,36 @@ static int ft5x06_ts_resume(struct device *dev)
                         gesture_swipe_up = gesture_swipe_up_temp;
                         gesture_swipe_up_changed = false;
                 }
+
+		return err;
+	}
+#endif
+
+#ifdef CONFIG_WAKE_GESTURES
+	if (device_may_wakeup(dev) && (s2w_switch || dt2w_switch)) {
+		ft5x0x_write_reg(data->client, 0xD0, 0);
+
+		for (i = 0; i < data->pdata->num_max_touches; i++) {
+			input_mt_slot(data->input_dev, i);
+			input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, 0);
+		}
+		input_mt_report_pointer_emulation(data->input_dev, false);
+		input_sync(data->input_dev);
+
+		err = disable_irq_wake(data->client->irq);
+		if (err)
+			dev_err(dev, "%s: disable_irq_wake failed\n",
+				__func__);
+		data->suspended = false;
+
+		if (dt2w_switch_changed) {
+			dt2w_switch = dt2w_switch_temp;
+			dt2w_switch_changed = false;
+		}
+		if (s2w_switch_changed) {
+			s2w_switch = s2w_switch_temp;
+			s2w_switch_changed = false;
+		}
 
 		return err;
 	}
@@ -4333,6 +4396,11 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	}
 
 #ifdef CONFIG_SCREEN_OFF_GESTURES
+	ft5x06_ts = data;
+	device_init_wakeup(&client->dev, 1);
+#endif
+
+#ifdef CONFIG_WAKE_GESTURES
 	ft5x06_ts = data;
 	device_init_wakeup(&client->dev, 1);
 #endif

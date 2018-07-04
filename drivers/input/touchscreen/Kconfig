@@ -1228,7 +1228,6 @@ config TOUCHSCREEN_FT5336
 
 config SCREEN_OFF_GESTURES
 	bool "screen off gestures"
-endif
 
 config TOUCHSCREEN_SWEEP2WAKE
         bool "Sweep2Wake for touchscreens"
@@ -1239,3 +1238,8 @@ config TOUCHSCREEN_DOUBLETAP2WAKE
 	bool "DoubleTap2Wake for touchscreens"
 	depends on !TOUCHSCREEN_FT5X06_GESTURE
 	default n
+
+config WAKE_GESTURES
+	bool "wake gestures"
+
+endif
