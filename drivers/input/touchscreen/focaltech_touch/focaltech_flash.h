@@ -54,7 +54,6 @@ enum FILE_SIZE_TYPE {
 	FW2_SIZE,
 	FW3_SIZE,
 	PRAMBOOT_SIZE,
-	LCD_CFG_SIZE
 };
 
 /* pramboot */
@@ -77,8 +76,6 @@ enum FILE_SIZE_TYPE {
 #define FTS_UPGRADE_PRAMBOOT    FTS_PRAMBOOT_8606
 #endif
 
-/* remove pramboot */
-#undef FTS_UPGRADE_PRAMBOOT
 
 /*****************************************************************************
 * Private enumerations, structures and unions using typedef
@@ -87,10 +84,11 @@ enum FILE_SIZE_TYPE {
 
 struct fts_upgrade_fun {
 	int (*get_i_file)(struct i2c_client *, int);
-	int (*get_app_bin_file_ver)(struct i2c_client *, char *);
+	int (*get_app_bin_file_ver)(char *);
 	int (*get_app_i_file_ver)(void);
 	int (*upgrade_with_app_i_file)(struct i2c_client *);
 	int (*upgrade_with_app_bin_file)(struct i2c_client *, char *);
+	int (*get_hlic_ver)(void);
 	int (*upgrade_with_lcd_cfg_i_file)(struct i2c_client *);
 	int (*upgrade_with_lcd_cfg_bin_file)(struct i2c_client *, char *);
 };
@@ -130,7 +128,9 @@ int fts_ctpm_auto_clb(struct i2c_client *client);
 * Static function prototypes
 *****************************************************************************/
 u32 fts_getsize(u8 fw_type);
+int fts_GetFirmwareSize(char *firmware_name);
 int fts_ctpm_i2c_hid2std(struct i2c_client *client);
+int fts_ReadFirmware(char *firmware_name,u8 *firmware_buf);
 void fts_ctpm_rom_or_pram_reset(struct i2c_client *client);
 enum FW_STATUS fts_ctpm_get_pram_or_rom_id(struct i2c_client *client);
 #endif

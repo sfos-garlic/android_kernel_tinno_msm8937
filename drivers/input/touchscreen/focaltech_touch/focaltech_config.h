@@ -85,7 +85,12 @@
 /*
  * choose your ic chip type of focaltech
  */
-#define FTS_CHIP_TYPE   _FT3267
+//#define FTS_CHIP_TYPE   _FT8716
+#if defined (CONFIG_FTS_IC_TYPE_3X27)
+#define FTS_CHIP_TYPE   _FT3327
+#else
+#define FTS_CHIP_TYPE   _FT5446I
+#endif
 
 /******************* Enables *********************/
 /*********** 1 to enable, 0 to disable ***********/
@@ -94,7 +99,7 @@
  * show debug log info
  * enable it for debug, disable it for release
  */
-#define FTS_DEBUG_EN                            0
+#define FTS_DEBUG_EN                            1
 
 /*
  * Linux MultiTouch Protocol
@@ -108,14 +113,6 @@
  * 1:enable(default),0:disable
 */
 #define FTS_REPORT_PRESSURE_EN                  1
-
-/*
- * Force touch support
- * different pressure for multitouch
- * 1: true pressure for force touch
- * 0: constant pressure(default)
- */
-#define FTS_FORCE_TOUCH_EN                      0
 
 /*
  * Gesture function enable
@@ -168,6 +165,7 @@
  * enable it when customer need control TP power
  * default: disable
  */
+//#define FTS_POWER_SOURCE_CUST_EN                0
 #define FTS_POWER_SOURCE_CUST_EN                1
 
 /****************************************************/
@@ -194,7 +192,7 @@
  * 0:No check vendor_id (default)
  * 1/2/3: Check vendor_id for vendor compatibility
  */
-#define FTS_GET_VENDOR_ID_NUM                   0
+#define FTS_GET_VENDOR_ID_NUM                   3
 
 /*
  * vendor_id(s) for vendor(s) to be compatible with.
@@ -204,35 +202,54 @@
  * FTS_GET_VENDOR_ID_NUM >= 2, compatible with FTS_VENDOR_2_ID
  * FTS_GET_VENDOR_ID_NUM == 3, compatible with FTS_VENDOR_3_ID
  */
-#define FTS_VENDOR_1_ID                         0x00
-#define FTS_VENDOR_2_ID                         0x00
-#define FTS_VENDOR_3_ID                         0x00
+#define FTS_CTP_VENDOR_BYD          (0x59)
+#define FTS_CTP_VENDOR_TRULY        (0x5A)
+#define FTS_CTP_VENDOR_NANBO        (0x5B)
+#define FTS_CTP_VENDOR_BAOMING      (0x5D)
+#define FTS_CTP_VENDOR_JIEMIAN      (0x8B)
+#define FTS_CTP_VENDOR_YEJI         (0x80)
+#define FTS_CTP_VENDOR_HOLITECH     (0x82)
+#define FTS_CTP_VENDOR_HUARUICHUANG (0x43)
+#define FTS_CTP_VENDOR_DIJING       (0x67)
+#define FTS_CTP_VENDOR_DEFAULT      (0x79)
+#define FTS_CTP_VENDOR_SHENYUE      (0xA0)
+#define FTS_CTP_VENDOR_BOEN         (0x3B)
+
+
+#define FTS_VENDOR_1_ID                         FTS_CTP_VENDOR_YEJI
+#define FTS_VENDOR_2_ID                         FTS_CTP_VENDOR_DIJING
+#define FTS_VENDOR_3_ID                         FTS_CTP_VENDOR_HOLITECH
 
 /*
  * FW_APP.i file for auto upgrade, you must replace it with your own
  * define your own fw_app, the sample one to be replaced is invalid
- * NOTE: if FTS_GET_VENDOR_ID_NUM >= 1,
- *       it's the fw corresponding with FTS_VENDOR_1_ID
+ * NOTE: if FTS_GET_VENDOR_ID_NUM >= 1, it's the fw corresponding with FTS_VENDOR_1_ID
  */
-#define FTS_UPGRADE_FW_APP		"include/firmware/FT8716_app_sample.i"
+//#define FTS_UPGRADE_FW_APP                      "include/firmware/FT8716_app_sample.i"
+
+#if defined(CONFIG_PROJECT_HS3)
+#define FTS_UPGRADE_FW_APP                      "include/firmware/FT5346DQQ_V12BN_ID0X80_V01_D01_20170614_app.i"
+#elif defined(CONFIG_PROJECT_HS2)
+#define FTS_UPGRADE_FW_APP                      "include/firmware/FT5346DQQ_V12LITE_ID0X80_V02_D01_20170525_app.i"
+#else
+#define FTS_UPGRADE_FW_APP                      "include/firmware/FT8716_app_sample.i"
+#endif
 
 /*
  * if FTS_GET_VENDOR_ID_NUM >= 2, fw corrsponding with FTS_VENDOR_2_ID
  * define your own fw_app, the sample one is invalid
  */
-#define FTS_UPGRADE_FW2_APP		"include/firmware/FT8716_app_sample.i"
+#define FTS_UPGRADE_FW2_APP                     "include/firmware/FT8716_app_sample.i"
 
 /*
  * if FTS_GET_VENDOR_ID_NUM == 3, fw corrsponding with FTS_VENDOR_3_ID
  * define your own fw_app, the sample one is invalid
  */
-#define FTS_UPGRADE_FW3_APP		"include/firmware/FT8716_app_sample.i"
-
-/*
- * lcd_cfg.i file for lcd cfg upgrade
- * define your own lcd_cfg.i, the sample one is invalid
- */
-#define FTS_UPGRADE_LCD_CFG		"include/firmware/lcd_cfg.i"
+#if defined(CONFIG_PROJECT_HS2)
+#define FTS_UPGRADE_FW3_APP                     "include/firmware/CCF9723_TLv12_720x1440_5436DQQ_V11_82_20170913_app.i"
+#else
+#define FTS_UPGRADE_FW3_APP                     "include/firmware/FT8716_app_sample.i"
+#endif
 
 /*
  * upgrade stress test for debug
