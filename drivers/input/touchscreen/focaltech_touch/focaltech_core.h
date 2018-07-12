@@ -52,7 +52,7 @@
 #include <linux/workqueue.h>
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/version.h>
 #include <linux/types.h>
 #include <linux/sched.h>
@@ -69,6 +69,15 @@
 #if FTS_PSENSOR_EN
 #include <linux/sensors.h>
 #endif
+
+#ifdef CONFIG_FT5XX_TGESTURE_FUNCTION
+#if FTS_GESTURE_EN
+#define KEY_FT5XX_SENSOR 251
+extern struct input_dev *ft5xx_key_dev;
+extern u8 gTGesture;
+#endif
+#endif
+
 /*****************************************************************************
 * Private constant and macro definitions using #define
 *****************************************************************************/
@@ -98,9 +107,9 @@
 #define FTS_TOUCH_CONTACT   2
 
 #define FTS_SYSFS_ECHO_ON(buf)      ((strnicmp(buf, "1", 1)  == 0) || \
-					(strnicmp(buf, "on", 2) == 0))
+                                     (strnicmp(buf, "on", 2) == 0))
 #define FTS_SYSFS_ECHO_OFF(buf)     ((strnicmp(buf, "0", 1)  == 0) || \
-					(strnicmp(buf, "off", 3) == 0))
+                                     (strnicmp(buf, "off", 3) == 0))
 
 /*****************************************************************************
 * Private enumerations, structures and unions using typedef
@@ -108,10 +117,14 @@
 
 
 struct fts_ts_platform_data {
-	int irq_gpio;
+	u32 irq_gpio;
 	u32 irq_gpio_flags;
-	int reset_gpio;
+	u32 reset_gpio;
 	u32 reset_gpio_flags;
+	//Add by Luoxingxing
+	u32 id_gpio;
+	u32 id_gpio_flags;
+	//END
 	bool have_key;
 	u32 key_number;
 	u32 keys[4];
@@ -122,18 +135,15 @@ struct fts_ts_platform_data {
 	u32 x_min;
 	u32 y_min;
 	u32 max_touch_number;
-	bool wakeup_gestures_en;
+	bool fw_auto_update;
 };
 
 struct ts_event {
 	u16 au16_x[FTS_MAX_POINTS]; /*x coordinate */
 	u16 au16_y[FTS_MAX_POINTS]; /*y coordinate */
 	u16 pressure[FTS_MAX_POINTS];
-	u8 au8_touch_event[FTS_MAX_POINTS]; /* touch event:
-					       0 -- down;
-					       1-- up;
-					       2 -- contact */
-	u8 au8_finger_id[FTS_MAX_POINTS];   /* touch ID */
+	u8 au8_touch_event[FTS_MAX_POINTS]; /* touch event: 0 -- down; 1-- up; 2 -- contact */
+	u8 au8_finger_id[FTS_MAX_POINTS];   /*touch ID */
 	u8 area[FTS_MAX_POINTS];
 	u8 touch_point;
 	u8 point_num;
@@ -162,11 +172,16 @@ struct fts_ts_data {
 
 #if defined(CONFIG_FB)
 	struct notifier_block fb_notif;
+#ifdef CONFIG_TINNO_DRV_OPTIMIZE
+	struct work_struct fb_notify_work;
+#endif
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	struct early_suspend early_suspend;
 #endif
 };
 
+int fts_ft5x46_get_i_file_MBA(struct i2c_client *client, int fw_valid);
+int fts_ft5x46_get_vendor_id_flash(struct i2c_client *client, u8 *vendor_id);
 
 #if FTS_PSENSOR_EN
 struct fts_psensor_platform_data {
