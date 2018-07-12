@@ -44,7 +44,7 @@
 /*****************************************************************************
 * Global variable or extern global variabls/functions
 *****************************************************************************/
-static u8 upgrade_ecc;
+u8 upgrade_ecc;
 
 /*****************************************************************************
 * Static function prototypes
@@ -68,13 +68,14 @@ int fts_ctpm_upgrade_idc_init(struct i2c_client *client)
 	/*read flash ID*/
 	auc_i2c_write_buf[0] = 0x05;
 	reg_val_id[0] = 0x00;
-	i_ret = fts_i2c_read(client, auc_i2c_write_buf, 1, reg_val_id, 1);
-	if (i_ret < 0)
+	i_ret =fts_i2c_read(client, auc_i2c_write_buf, 1, reg_val_id, 1);
+	if (i_ret < 0) {
 		return -EIO;
+	}
 
 	/*set flash clk*/
 	auc_i2c_write_buf[0] = 0x05;
-	auc_i2c_write_buf[1] = reg_val_id[0];/* 0x80; */
+	auc_i2c_write_buf[1] = reg_val_id[0];//0x80;
 	auc_i2c_write_buf[2] = 0x00;
 	fts_i2c_write(client, auc_i2c_write_buf, 3);
 
@@ -115,10 +116,10 @@ int fts_ctpm_start_fw_upgrade(struct i2c_client *client)
 	int i_ret = 0;
 
 	/*send the soft upgrade commond to FW, and start upgrade*/
-	FTS_INFO("[UPGRADE]***send 0xAA and 0x55 to FW, start upgrade***\n");
+	FTS_INFO("[UPGRADE]**********send 0xAA and 0x55 to FW, start upgrade**********");
 
 	i_ret = fts_i2c_write_reg(client, FTS_RST_CMD_REG1, FTS_UPGRADE_AA);
-	msleep(20);
+	msleep(10);
 	i_ret = fts_i2c_write_reg(client, FTS_RST_CMD_REG1, FTS_UPGRADE_55);
 	msleep(200);
 
@@ -139,7 +140,7 @@ bool fts_ctpm_check_run_state(struct i2c_client *client, int rstate)
 
 	for (i = 0; i < FTS_UPGRADE_LOOP; i++) {
 		cstate = fts_ctpm_get_pram_or_rom_id(client);
-		FTS_DEBUG("[UPGRADE]: run state = %d", cstate);
+		FTS_DEBUG( "[UPGRADE]: run state = %d", cstate);
 
 		if (cstate == rstate)
 			return true;
@@ -163,21 +164,16 @@ int fts_ctpm_pramboot_ecc(struct i2c_client *client)
 
 	FTS_FUNC_ENTER();
 
-	/* read out checksum,
-	 * if pramboot checksum != host checksum, upgrade fail*/
+	/*read out checksum, if pramboot checksum != host checksum, upgrade fail*/
 	FTS_INFO("[UPGRADE]******read out pramboot checksum******");
 	auc_i2c_write_buf[0] = 0xcc;
-	usleep_range(2000, 4000);
+	msleep(2);
 	fts_i2c_read(client, auc_i2c_write_buf, 1, reg_val, 1);
-	/*pramboot checksum != host checksum, upgrade fail*/
-	if (reg_val[0] != upgrade_ecc) {
-		FTS_ERROR("[UPGRADE]: checksum fail:pramboot = %X, host = %X!",
-				reg_val[0], upgrade_ecc);
+	if (reg_val[0] != upgrade_ecc) { /*pramboot checksum != host checksum, upgrade fail*/
+		FTS_ERROR("[UPGRADE]: checksum fail : pramboot_ecc = %X, host_ecc = %X!!",reg_val[0],upgrade_ecc);
 		return -EIO;
 	}
-
-	FTS_DEBUG("[UPGRADE]: checksum success:pramboot = %X, host = %X!!",
-			reg_val[0], upgrade_ecc);
+	FTS_DEBUG("[UPGRADE]: checksum success : pramboot_ecc = %X, host_ecc = %X!!",reg_val[0],upgrade_ecc);
 	msleep(100);
 
 	FTS_FUNC_EXIT();
@@ -200,7 +196,7 @@ int fts_ctpm_upgrade_ecc(struct i2c_client *client, u32 startaddr, u32 length)
 	u8 reg_val[4] = {0};
 	int i_ret = 0;
 
-	FTS_INFO("[UPGRADE]**********read out checksum**********");
+	FTS_INFO( "[UPGRADE]**********read out checksum**********");
 
 	/*check sum init*/
 	auc_i2c_write_buf[0] = 0x64;
@@ -213,10 +209,11 @@ int fts_ctpm_upgrade_ecc(struct i2c_client *client, u32 startaddr, u32 length)
 	auc_i2c_write_buf[2] = (u8)(startaddr >> 8);
 	auc_i2c_write_buf[3] = (u8)(startaddr);
 
-	if (length > LEN_FLASH_ECC_MAX)
+	if (length > LEN_FLASH_ECC_MAX) {
 		temp = LEN_FLASH_ECC_MAX;
-	else
+	} else {
 		temp = length;
+	}
 
 	auc_i2c_write_buf[4] = (u8)(temp >> 8);
 	auc_i2c_write_buf[5] = (u8)(temp);
@@ -229,9 +226,10 @@ int fts_ctpm_upgrade_ecc(struct i2c_client *client, u32 startaddr, u32 length)
 		reg_val[0] = reg_val[1] = 0x00;
 		fts_i2c_read(client, auc_i2c_write_buf, 1, reg_val, 2);
 
-		if (0xF0 == reg_val[0] && 0x55 == reg_val[1])
+		if (0xF0==reg_val[0] && 0x55==reg_val[1]) {
 			break;
-		usleep_range(1000, 2000);
+		}
+		msleep(1);
 
 	}
 
@@ -253,24 +251,22 @@ int fts_ctpm_upgrade_ecc(struct i2c_client *client, u32 startaddr, u32 length)
 			reg_val[0] = reg_val[1] = 0x00;
 			fts_i2c_read(client, auc_i2c_write_buf, 1, reg_val, 2);
 
-			if (0xF0 == reg_val[0] && 0x55 == reg_val[1])
+			if (0xF0==reg_val[0] && 0x55==reg_val[1]) {
 				break;
-			usleep_range(1000, 2000);
+			}
+			msleep(1);
 		}
 	}
 
 	/*read out check sum*/
 	auc_i2c_write_buf[0] = 0x66;
 	i_ret = fts_i2c_read(client, auc_i2c_write_buf, 1, reg_val, 1);
-	/*if check sum fail, upgrade fail*/
-	if (reg_val[0] != upgrade_ecc) {
-		FTS_ERROR("[UPGRADE]: ecc error! FW=%02x upgrade_ecc=%02x!!",
-				reg_val[0], upgrade_ecc);
+	if (reg_val[0] != upgrade_ecc) { /*if check sum fail, upgrade fail*/
+		FTS_ERROR( "[UPGRADE]: ecc error! FW=%02x upgrade_ecc=%02x!!", reg_val[0], upgrade_ecc);
 		return -EIO;
 	}
 
-	FTS_DEBUG("[UPGRADE]: ecc success : FW=%02x upgrade_ecc=%02x!!",
-				reg_val[0], upgrade_ecc);
+	FTS_DEBUG( "[UPGRADE]: ecc success : FW=%02x upgrade_ecc=%02x!!", reg_val[0], upgrade_ecc);
 
 	upgrade_ecc = 0;
 
@@ -298,23 +294,21 @@ int fts_ctpm_erase_flash(struct i2c_client *client)
 	msleep(1350);
 
 	for (i = 0; i < 15; i++) {
-		/* get the erase app status,
-		 * if get 0xF0AA£¬erase flash success*/
+		/*get the erase app status, if get 0xF0AA£¬erase flash success*/
 		auc_i2c_write_buf[0] = 0x6a;
 		reg_val[0] = reg_val[1] = 0x00;
 		fts_i2c_read(client, auc_i2c_write_buf, 1, reg_val, 2);
-		/*erase flash success*/
-		if (0xF0 == reg_val[0] && 0xAA == reg_val[1])
+
+		if (0xF0==reg_val[0] && 0xAA==reg_val[1]) { /*erase flash success*/
 			break;
+		}
 		msleep(50);
 	}
 
-	/*erase flash fail*/
-	if ((0xF0 != reg_val[0] || 0xAA != reg_val[1]) && (i >= 15)) {
-		FTS_ERROR("[UPGRADE]: erase app error.reset tp and reload FW!");
+	if ((0xF0!=reg_val[0] || 0xAA!=reg_val[1]) && (i >= 15)) { /*erase flash fail*/
+		FTS_ERROR("[UPGRADE]: erase app error.reset tp and reload FW!!");
 		return -EIO;
 	}
-
 	FTS_DEBUG("[UPGRADE]: erase app ok!!");
 
 	return 0;
@@ -327,8 +321,7 @@ int fts_ctpm_erase_flash(struct i2c_client *client)
 * Output:
 * Return:
 ***********************************************************************/
-int fts_ctpm_write_pramboot_for_idc(struct i2c_client *client,
-		u32 length, u8 *readbuf)
+int fts_ctpm_write_pramboot_for_idc(struct i2c_client *client, u32 length, u8 *readbuf)
 {
 	u32 i = 0;
 	u32 j;
@@ -341,9 +334,9 @@ int fts_ctpm_write_pramboot_for_idc(struct i2c_client *client,
 
 	temp = 0;
 	packet_number = (length) / FTS_PACKET_LENGTH;
-	if ((length) % FTS_PACKET_LENGTH > 0)
+	if ((length) % FTS_PACKET_LENGTH > 0) {
 		packet_number++;
-
+	}
 	packet_buf[0] = 0xae;
 	packet_buf[1] = 0x00;
 
@@ -351,11 +344,11 @@ int fts_ctpm_write_pramboot_for_idc(struct i2c_client *client,
 		temp = j * FTS_PACKET_LENGTH;
 		packet_buf[2] = (u8) (temp >> 8);
 		packet_buf[3] = (u8) temp;
-		if (j < (packet_number-1))
+		if (j < (packet_number-1)) {
 			temp = FTS_PACKET_LENGTH;
-		else
+		} else {
 			temp = (length) % FTS_PACKET_LENGTH;
-
+		}
 		packet_buf[4] = (u8) (temp >> 8);
 		packet_buf[5] = (u8) temp;
 
@@ -376,8 +369,7 @@ int fts_ctpm_write_pramboot_for_idc(struct i2c_client *client,
 * Output:
 * Return:
 ***********************************************************************/
-int fts_ctpm_write_app_for_idc(struct i2c_client *client,
-			u32 length, u8 *readbuf)
+int fts_ctpm_write_app_for_idc(struct i2c_client *client, u32 length, u8 *readbuf)
 {
 	u32 j;
 	u32 i = 0;
@@ -388,24 +380,25 @@ int fts_ctpm_write_app_for_idc(struct i2c_client *client,
 	u8 auc_i2c_write_buf[10];
 	u8 reg_val[4] = {0};
 
-	FTS_INFO("[UPGRADE]**********write app to flash**********");
+	FTS_INFO( "[UPGRADE]**********write app to flash**********");
 
 	upgrade_ecc = 0;
 
 	packet_number = (length) / FTS_PACKET_LENGTH;
-	if (((length) % FTS_PACKET_LENGTH) > 0)
+	if (((length) % FTS_PACKET_LENGTH) > 0) {
 		packet_number++;
+	}
 
 	packet_buf[0] = 0xbf;
 
 	for (j = 0; j < packet_number; j++) {
 		temp = 0x1000+j * FTS_PACKET_LENGTH;
 
-		if (j < (packet_number-1))
+		if (j<(packet_number-1)) {
 			writelenght = FTS_PACKET_LENGTH;
-		else
+		} else {
 			writelenght = ((length) % FTS_PACKET_LENGTH);
-
+		}
 		packet_buf[1] = (u8) (temp >> 16);
 		packet_buf[2] = (u8) (temp >> 8);
 		packet_buf[3] = (u8) temp;
@@ -420,52 +413,53 @@ int fts_ctpm_write_app_for_idc(struct i2c_client *client,
 		fts_i2c_write(client, packet_buf, (writelenght + 6));
 
 		for (i = 0; i < 30; i++) {
-			/* read status and check
-			 * if the app writing is finished */
+			/*read status and check if the app writting is finished*/
 			auc_i2c_write_buf[0] = 0x6a;
 			reg_val[0] = reg_val[1] = 0x00;
 			fts_i2c_read(client, auc_i2c_write_buf, 1, reg_val, 2);
 
-			if ((j + 0x20+0x1000) == (((reg_val[0]) << 8)
-						| reg_val[1]))
+			if ((j + 0x20+0x1000) == (((reg_val[0]) << 8) | reg_val[1])) {
 				break;
-
+			}
+			//msleep(1);
 			fts_ctpm_upgrade_delay(1000);
 		}
 	}
-
 	msleep(50);
 
 	return 0;
 }
 
-#define APP_LEN		 0x00
-#define APP_LEN_NE	 0x02
-#define APP_P1_ECC	 0x04
-#define APP_P1_ECC_NE	 0x06
-#define APP_P2_ECC	 0x08
-#define APP_P2_ECC_NE	 0x0A
-#define APP_LEN_H	 0x12
-#define APP_LEN_H_NE	 0x14
-#define APP_BLR_ID	 0x1C
-#define APP_BLR_ID_NE	 0x1D
-#define PBOOT_ID_H	 0x1E
-#define PBOOT_ID_L	 0x1F
 
-#define AL2_FCS_COEF		  ((1 << 15) + (1 << 10) + (1 << 3))
+typedef enum {
+	APP_LEN        = 0x00,
+	APP_LEN_NE     = 0x02,
+	APP_P1_ECC     = 0x04,
+	APP_P1_ECC_NE  = 0x06,
+	APP_P2_ECC     = 0x08,
+	APP_P2_ECC_NE  = 0x0A,
+	APP_LEN_H      = 0x12,
+	APP_LEN_H_NE   = 0x14,
+	APP_BLR_ID     = 0x1C,
+	APP_BLR_ID_NE  = 0x1D,
+	PBOOT_ID_H     = 0x1E,
+	PBOOT_ID_L     = 0x1F
+} ENUM_APP_INFO;
+
+#define AL2_FCS_COEF          ((1 << 15) + (1 << 10) + (1 << 3))
 
 #if ((FTS_CHIP_TYPE == _FT8006) || (FTS_CHIP_TYPE == _FT8736))
 #define FW_CFG_TOTAL_SIZE   0x80
 #else
 #define FW_CFG_TOTAL_SIZE   0x00
 #endif
-#define APP1_START	0x00
-#define APP1_LEN	0x100
-#define APP_VERIF_ADDR	(APP1_START + APP1_LEN)
-#define APP_VERIF_LEN	0x20
-#define APP1_ECC_ADDR	(APP_VERIF_ADDR + APP_P1_ECC)
-#define APP2_START	(APP_VERIF_ADDR + APP_VERIF_LEN + FW_CFG_TOTAL_SIZE)
-#define APP2_ECC_ADDR	(APP_VERIF_ADDR + APP_P2_ECC)
+#define APP1_START          0x00
+#define APP1_LEN            0x100
+#define APP_VERIF_ADDR      (APP1_START + APP1_LEN)
+#define APP_VERIF_LEN       0x20
+#define APP1_ECC_ADDR       (APP_VERIF_ADDR + APP_P1_ECC)
+#define APP2_START          (APP_VERIF_ADDR + APP_VERIF_LEN + FW_CFG_TOTAL_SIZE)
+#define APP2_ECC_ADDR       (APP_VERIF_ADDR + APP_P2_ECC)
 /*****************************************************************************
 * Name: DrvReadPram16
 * Brief: Get Word
@@ -485,23 +479,22 @@ static u16 data_word(u8 *pbt_buf, u32 addr)
 * Output:
 * Return:
 *****************************************************************************/
-static u16 crc_calc(u8 *pbt_buf, u32 addr, u16 length)
+u16 crc_calc(u8 *pbt_buf, u32 addr, u16 length)
 {
 	u16 cFcs = 0;
 	u16 i, j;
 
-	FTS_DEBUG("[UPGRADE][ECC] : %04x  data:%04x, len:%04x!!",
-			(addr), data_word(pbt_buf, (addr)), length);
-	for (i = 0; i < length; i++) {
+	FTS_DEBUG("[UPGRADE][ECC] : %04x  data:%04x, len:%04x!!",(addr), data_word(pbt_buf, (addr)), length);
+	for ( i = 0; i < length; i++ ) {
 		cFcs ^= data_word(pbt_buf, (addr+i*2));
-		for (j = 0; j < 16; j++) {
-			if (cFcs & 1)
+		for (j = 0; j < 16; j ++) {
+			if (cFcs & 1) {
 				cFcs = (u16)((cFcs >> 1) ^ AL2_FCS_COEF);
-			else
+			} else {
 				cFcs >>= 1;
+			}
 		}
 	}
-
 	return cFcs;
 }
 
@@ -512,7 +505,7 @@ static u16 crc_calc(u8 *pbt_buf, u32 addr, u16 length)
 * Output:
 * Return:
 *****************************************************************************/
-static bool ecc_check(u8 *pbt_buf, u32 star_addr, u32 len, u16 ecc_addr)
+bool ecc_check(u8 *pbt_buf, u32 star_addr, u32 len, u16 ecc_addr)
 {
 	u16 ecc1;
 	u16 ecc2;
@@ -521,8 +514,9 @@ static bool ecc_check(u8 *pbt_buf, u32 star_addr, u32 len, u16 ecc_addr)
 	ecc1 = data_word(pbt_buf, ecc_addr);
 	ecc2 = data_word(pbt_buf, ecc_addr+2);
 
-	if ((ecc1 + ecc2) != 0xFFFF)
+	if ((ecc1 + ecc2) != 0xFFFF) {
 		return false;
+	}
 
 	cal_ecc = crc_calc(pbt_buf, star_addr, (len/2));
 
@@ -531,7 +525,6 @@ static bool ecc_check(u8 *pbt_buf, u32 star_addr, u32 len, u16 ecc_addr)
 		FTS_DEBUG("[UPGRADE][ECC] : ecc error!!");
 		return false;
 	}
-
 	return true;
 }
 
@@ -548,8 +541,7 @@ bool fts_check_app_bin_valid_idc(u8 *pbt_buf)
 #if (FTS_CHIP_TYPE != _FT8006)
 	/* 1. First Byte */
 	if (pbt_buf[0] != 0x02) {
-		FTS_DEBUG("[UPGRADE]APP.BIN Verify- the first byte(%x) error",
-						pbt_buf[0]);
+		FTS_DEBUG("[UPGRADE]APP.BIN Verify- the first byte(%x) error", pbt_buf[0]);
 		return false;
 	}
 #endif
@@ -560,26 +552,19 @@ bool fts_check_app_bin_valid_idc(u8 *pbt_buf)
 	}
 
 	/* 3. PART2 ECC */
-	if ((data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN)
-		+ data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_NE)) != 0xFFFF) {
+	if ((data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN) + data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_NE)) != 0xFFFF) {
 		FTS_DEBUG("[UPGRADE]APP.BIN Verify- Length XOR error");
 		return false;
 	}
-
 	len = data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN);
 #if (FTS_CHIP_TYPE == _FT8006)
-	if ((data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_H)
-		+ data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_H_NE)) != 0xFFFF) {
+	if ((data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_H) + data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_H_NE)) != 0xFFFF) {
 		FTS_DEBUG("[UPGRADE]APP.BIN Verify- Length2 XOR error");
 		return false;
 	}
-
 	len +=  ((u32)data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_H) << 16);
 #endif
-	FTS_DEBUG("%x %x %x %x", APP2_START, len,
-		((u32)data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_H) << 16),
-		data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN));
-
+	FTS_DEBUG("%x %x %x %x",APP2_START, len, ((u32)data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN_H) << 16), data_word(pbt_buf, APP_VERIF_ADDR+APP_LEN));
 	len -= APP2_START;
 
 	return ecc_check(pbt_buf, APP2_START, len, APP2_ECC_ADDR);
