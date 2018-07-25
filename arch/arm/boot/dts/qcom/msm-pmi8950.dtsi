@@ -210,7 +210,7 @@
 			qcom,iterm-ma = <250>;
 			qcom,float-voltage-mv = <4400>;
 			qcom,resume-delta-mv = <200>;
-			qcom,fastchg-current-ma = <1500>;		
+			qcom,fastchg-current-ma = <1800>;		
 			qcom,chg-inhibit-fg;
 			qcom,rparasitic-uohm = <100000>;
 			qcom,bms-psy-name = "bms";
