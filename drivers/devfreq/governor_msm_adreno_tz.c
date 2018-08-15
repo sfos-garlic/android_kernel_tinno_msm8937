@@ -22,7 +22,7 @@
 #include <linux/msm_adreno_devfreq.h>
 #include <asm/cacheflush.h>
 #include <soc/qcom/scm.h>
-#include <linux/powersuspend.h>
+#include <linux/display_state.h>
 #include "governor.h"
 
 static DEFINE_SPINLOCK(tz_lock);
@@ -68,8 +68,12 @@ static void do_partner_start_event(struct work_struct *work);
 static void do_partner_stop_event(struct work_struct *work);
 static void do_partner_suspend_event(struct work_struct *work);
 static void do_partner_resume_event(struct work_struct *work);
-/* Boolean to detect if pm has entered suspend mode */
+
+/* Boolean to Detect if PM has Entered Suspend Mode */
 static bool suspended = false;
+
+// Boolean to Check Display's State i.e., Off/On.
+static bool display_on;
 
 static struct workqueue_struct *workqueue;
 
@@ -163,33 +167,6 @@ void compute_work_load(struct devfreq_dev_status *stats,
 	acc_relative_busy += (stats->busy_time * stats->current_frequency) /
 				devfreq->profile->freq_table[0];
 	spin_unlock(&sample_lock);
-}
-
-/* Trap into the TrustZone, and call funcs there. */
-static int __secure_tz_reset_entry2(unsigned int *scm_data, u32 size_scm_data,
-					bool is_64)
-{
-	int ret;
-	/* sync memory before sending the commands to tz */
-	__iowmb();
-
-	if (!is_64) {
-		spin_lock(&tz_lock);
-		ret = scm_call_atomic2(SCM_SVC_IO, TZ_RESET_ID, scm_data[0],
-					scm_data[1]);
-		spin_unlock(&tz_lock);
-	} else {
-		if (is_scm_armv8()) {
-			struct scm_desc desc = {0};
-			desc.arginfo = 0;
-			ret = scm_call2(SCM_SIP_FNID(SCM_SVC_DCVS,
-					 TZ_RESET_ID_64), &desc);
-		} else {
-			ret = scm_call(SCM_SVC_DCVS, TZ_RESET_ID_64, scm_data,
-				size_scm_data, NULL, 0);
-		}
-	}
-	return ret;
 }
 
 static int __secure_tz_update_entry3(unsigned int *scm_data, u32 size_scm_data,
@@ -351,6 +328,8 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 	unsigned int scm_data[4];
 	int context_count = 0;
 
+	display_on = is_display_on();
+
 	/* keeps stats.private_data == NULL   */
 	result = devfreq->profile->get_dev_status(devfreq->dev.parent, &stats);
 	if (result) {
@@ -365,7 +344,7 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 	 * Force to use & record as min freq when system has
 	 * entered pm-suspend or screen-off state.
 	 */
-	if (suspended || power_suspended) {
+	if (suspended || !display_on) {
 		*freq = devfreq->profile->freq_table[devfreq->profile->max_state - 1];
 		return 0;
 	}
