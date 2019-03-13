@@ -92,6 +92,11 @@ typedef struct sAniSirGlobal *tpAniSirGlobal;
 #define SIR_MAX_24G_5G_CHANNEL_RANGE      166
 #define SIR_BCN_REPORT_MAX_BSS_DESC       4
 
+/*
+ * RSSI diff threshold to fix rssi and channel in beacon for the cases where
+ * DS params and HT info is not present.
+ */
+#define SIR_ADJACENT_CHANNEL_RSSI_DIFF_THRESHOLD 15
 
 #ifdef FEATURE_WLAN_BATCH_SCAN
 #define SIR_MAX_SSID_SIZE (32)
@@ -154,6 +159,9 @@ typedef tANI_U8 tSirVersionString[SIR_VERSION_STRING_LEN];
 #endif /* WLAN_FEATURE_EXTSCAN */
 
 #define WLAN_DISA_MAX_PAYLOAD_SIZE                1600
+
+#define CHANNEL_SWITCH_BEACON_COUNT 5
+#define SAP_CHANNEL_SWITCH_MODE 1
 
 enum eSirHostMsgTypes
 {
@@ -544,7 +552,8 @@ typedef struct sSirSmeReadyReq
 {
     tANI_U16   messageType; // eWNI_SME_SYS_READY_IND
     tANI_U16   length;
-    tANI_U16   transactionId;     
+    tANI_U16   transactionId;
+    void *sme_msg_cb;
 } tSirSmeReadyReq, *tpSirSmeReadyReq;
 
 /// Definition for response message to previously issued start request
@@ -1126,8 +1135,13 @@ typedef struct sSirSmeJoinReq
     tSirMacPowerCapInfo powerCap;
     tSirSupChnl         supportedChannels;
     bool force_24ghz_in_ht20;
+    bool force_rsne_override;
     tSirBssDescription  bssDescription;
-
+    /*
+     * WARNING: Pls make bssDescription as last variable in struct
+     * tSirSmeJoinReq as it has ieFields followed after this bss
+     * description. Adding a variable after this corrupts the ieFields
+     */
 } tSirSmeJoinReq, *tpSirSmeJoinReq;
 
 /// Definition for reponse message to previously issued join request
@@ -1195,6 +1209,15 @@ typedef struct sSirSmeProbereq
     tANI_U16           devicePasswdId;
 } tSirSmeProbeReq, *tpSirSmeProbeReq;
 
+typedef struct sSirSmeChanInfo
+{
+    /* channel id */
+    tANI_U8 chan_id;
+    /* channel info described below */
+    tANI_U32 info;
+}tSirSmeChanInfo, *tpSirSmeChanInfo;
+
+
 /// Definition for Association indication from peer
 /// MAC --->
 typedef struct sSirSmeAssocInd
@@ -1229,6 +1252,10 @@ typedef struct sSirSmeAssocInd
     tANI_U32             assocReqLength;
     tANI_U8*             assocReqPtr;
     uint32_t             rate_flags;
+    tSirSmeChanInfo      chan_info;
+    tSirMacHTChannelWidth ch_width;
+    tDot11fIEHTCaps HTCaps;
+    tDot11fIEVHTCaps VHTCaps;
 } tSirSmeAssocInd, *tpSirSmeAssocInd;
 
 
@@ -6086,12 +6113,11 @@ typedef struct
     tSirMacAddr bssid;
 }tSirDelAllTdlsPeers, *ptSirDelAllTdlsPeers;
 
-typedef void (*tSirMonModeCb)(tANI_U32 *magic, struct completion *cmpVar);
+typedef void (*tSirMonModeCb)(void *context);
 typedef struct
 {
-    tANI_U32 *magic;
-    struct completion *cmpVar;
     void *data;
+    void *context;
     tSirMonModeCb callback;
 }tSirMonModeReq, *ptSirMonModeReq;
 
@@ -6327,4 +6353,78 @@ enum sir_roam_cleanup_type {
 typedef struct {
     tANI_U8 session_id;
 }tDelBaParams,*ptDelBaParams;
+
+/**
+ * struct sir_ecsa_ie_req - structure to send req to include ECSA IE in beacon
+ * @type: type of msg
+ * @len: length of msg
+ * @new_chan: new channel to which switch is requested
+ * @cb_mode:cbmode of the new channel
+ * @bssid: bssid of the AP
+ */
+struct sir_ecsa_ie_req {
+   uint16_t type;
+   uint16_t len;
+   uint8_t new_chan;
+   uint8_t cb_mode;
+   uint8_t bssid[VOS_MAC_ADDR_SIZE];
+};
+
+/**
+ * struct sir_ecsa_ie_complete_ind - structure to send indication that ECSA IE
+ * TX completion in beacon
+ * @session_id: session on which ECSA IE was sent
+ */
+struct sir_ecsa_ie_complete_ind {
+   uint8_t session_id;
+};
+
+/**
+ * struct sir_channel_chanege_req - structure to send channel change req to LIM
+ * @type: type of msg
+ * @len: length of msg
+ * @new_chan: new channel to which switch is requested
+ * @cb_mode:cbmode of the new channel
+ * @bssid: bssid of the AP
+ * @dot11mode: new dot11 mode
+ * @operational_rateset: new rate set
+ * @extended_rateset: new extended rate set
+ */
+struct sir_channel_chanege_req {
+   uint16_t type;
+   uint16_t len;
+   uint8_t new_chan;
+   uint8_t cb_mode;
+   uint8_t bssid[VOS_MAC_ADDR_SIZE];
+   uint32_t dot11mode;
+   tSirMacRateSet operational_rateset;
+   tSirMacRateSet extended_rateset;
+};
+
+/**
+ * struct sir_channel_chanege_rsp - structure for channel change resp from LIM
+ * @sme_session_id: sme session on which channel was changed
+ * @new_channel: new channel to which channel is changed
+ * @status:status of channel change
+ */
+struct sir_channel_chanege_rsp {
+   uint8_t sme_session_id;
+   uint8_t new_channel;
+   VOS_STATUS status;
+};
+
+/**
+ * struct ecsa_frame_params - ecsa frame params
+ * @switch_mode: switch mode of channel change
+ * @op_class: new channel op class
+ * @new_channel: new channel to shift
+ * @switch_count: channel switch count
+ */
+struct ecsa_frame_params {
+    uint8_t   switch_mode;
+    uint8_t      op_class;
+    uint8_t   new_channel;
+    uint8_t  switch_count;
+};
+
 #endif /* __SIR_API_H */

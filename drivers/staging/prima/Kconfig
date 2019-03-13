@@ -15,10 +15,6 @@ config PRONTO_WLAN
 	Add support for the Qualcomm Atheros Pronto WLAN module
 
 
-config QCOM_TDLS
-	bool "Enable TDLS feature"
-	default n
-
 #	depends on WLAN
 #	depends on CFG80211
 #        depends on WCNSS_CORE
@@ -55,6 +51,10 @@ config ENABLE_LINUX_REG
 
 config WLAN_OFFLOAD_PACKETS
 	bool "Enable offload packets feature"
+	default n
+
+config QCOM_TDLS
+	bool "Enable TDLS feature"
 	default n
 
 endif # PRIMA_WLAN || PRONTO_WLAN
