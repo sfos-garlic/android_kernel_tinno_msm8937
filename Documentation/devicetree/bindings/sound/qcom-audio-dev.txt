@@ -756,7 +756,12 @@ normally open.
 
 Optional Properties:
 - qcom,us-euro-gpios : GPIO on which gnd/mic swap signal is coming.
-
+- qcom,subsys-name: This value provides the subsystem name where codec
+		is present. This property enables the codec driver to
+		register and receive subsytem restart notification from subsystem
+		and follow appropriate steps to ensure codec is in proper state
+		after subsytem restart. By default codec driver register
+		with ADSP subsystem.
 Example:
 
 	sound {
@@ -1366,6 +1371,16 @@ Required properties:
 				When clock rate is set to zero,
 				then external clock is assumed.
 
+ - qcom,msm-cpudai-tdm-afe-ebit-unsupported: Notify if ebit setting is needed
+					  When this is set , alongwith
+					  clock rate as zero then afe
+					  is not configured for clock.
+
+ - qcom,msm-cpudai-tdm-sec-port-start: For chipsets with the limitation where we need
+				       to start both RX and TX AFE ports, this flag is
+				       used to start TX/RX port for RX/TX streams.
+
+
  [Second Level Nodes]
 
 Required properties:
@@ -1622,6 +1637,12 @@ capacitor mode.
 - qcom,msm-micbias2-ext-cap : Boolean. Enable micbias2 external
 capacitor mode.
 - qcom,msm-spk-ext-pa : GPIO which enables external speaker pa.
+- qcom,subsys-name: This value provides the subsystem name where codec
+		is present. This property enables the codec driver to
+		register and receive subsytem restart notification from subsystem
+		and follow appropriate steps to ensure codec is in proper state
+		after subsytem restart. By default codec driver register
+		with ADSP subsystem.
 
 To Configure External Audio Switch
 - qcom,msm-ext-audio-switch : GPIO which controls external switch that switches
@@ -1952,6 +1973,12 @@ Optional properties:
 - qcom,wsa-devs: This property contains list of wsa codec names. The names
 		should comply with the wsa nodes configurations.
 - qcom,wsa-aux-dev-prefix: This property contains list of wsa codec prefixes.
+- qcom,tdm-i2s-switch-enable: For chipsets where tdm mics are controlled by
+			      switch, drive corresponding gpio to output high
+			      to enable switch.
+- qcom,tdm-mic-mute-enable: This property is used to mute/unmute TDM mics using
+				gpio, drive corresponding gpio to output low
+				to unmute TDM mics.
 
 Example:
 	sound {
