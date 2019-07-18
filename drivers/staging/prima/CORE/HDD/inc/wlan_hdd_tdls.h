@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -78,7 +78,7 @@ enum tdls_disable_source {
     HDD_SET_TDLS_MODE_SOURCE_SCAN = 2,
     HDD_SET_TDLS_MODE_SOURCE_OFFCHANNEL = 4,
     HDD_SET_TDLS_MODE_SOURCE_BTC = 8,
-    HDD_SET_TDLS_MODE_SOURCE_P2P = 16
+    HDD_SET_TDLS_MODE_SOURCE_CONCURRENCY = 16
 };
 
 typedef struct
@@ -209,6 +209,7 @@ typedef struct {
     tANI_S8         ap_rssi;
     struct _hddTdlsPeer_t  *curr_candidate;
     struct work_struct implicit_setup;
+    bool is_tdls_disabled_bmps;
     v_U32_t            magic;
 } tdlsCtx_t;
 
@@ -537,5 +538,7 @@ tdlsConnInfo_t *wlan_hdd_get_conn_info(hdd_context_t *pHddCtx,
                                        tANI_U8 idx);
 
 v_VOID_t wlan_hdd_tdls_initiator_wait_cb(v_PVOID_t userData);
+
+void wlan_hdd_get_tdls_stats(hdd_adapter_t *pAdapter);
 
 #endif // __HDD_TDSL_H
