@@ -3,7 +3,7 @@
  * FocalTech ft5x06 TouchScreen driver.
  *
  * Copyright (c) 2010  Focal tech Ltd.
- * Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -29,12 +29,14 @@
 #include <linux/regulator/consumer.h>
 #include <linux/firmware.h>
 #include <linux/debugfs.h>
+#include <linux/sensors.h>
 #include <linux/input/ft5x06_ts.h>
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
+#include <linux/mutex.h>
 
 
 #if defined(CONFIG_FB)
@@ -45,14 +47,6 @@
 #include <linux/earlysuspend.h>
 /* Early-suspend level */
 #define FT_SUSPEND_LEVEL 1
-#endif
-
-#if defined(CONFIG_FT_SECURE_TOUCH)
-#include <linux/completion.h>
-#include <linux/atomic.h>
-#include <linux/clk.h>
-#include <linux/pm_runtime.h>
-static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 #endif
 
 #define FT_DRIVER_VERSION	0x02
@@ -73,7 +67,7 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 #define FT_TOUCH_DOWN		0
 #define FT_TOUCH_CONTACT	2
 
-/* register address*/
+/*register address*/
 #define FT_REG_DEV_MODE		0x00
 #define FT_DEV_MODE_REG_CAL	0x02
 #define FT_REG_ID		0xA3
@@ -86,6 +80,19 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 #define FT_REG_RESET_FW		0x07
 #define FT_REG_FW_MIN_VER	0xB2
 #define FT_REG_FW_SUB_MIN_VER	0xB3
+
+/* psensor register address*/
+#define FT_REG_PSENSOR_ENABLE	0xB0
+#define FT_REG_PSENSOR_STATUS	0x01
+
+/* psensor register bits*/
+#define FT_PSENSOR_ENABLE_MASK	0x01
+#define FT_PSENSOR_STATUS_NEAR	0xC0
+#define FT_PSENSOR_STATUS_FAR	0xE0
+#define FT_PSENSOR_FAR_TO_NEAR	0
+#define FT_PSENSOR_NEAR_TO_FAR	1
+#define FT_PSENSOR_ORIGINAL_STATE_FAR	1
+#define FT_PSENSOR_WAKEUP_TIMEOUT	500
 
 /* gesture register address*/
 #define FT_REG_GESTURE_ENABLE	0xD0
@@ -140,12 +147,13 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 #define FT5306I_ID		0x55
 #define FT6X06_ID		0x06
 #define FT6X36_ID		0x36
+#define FT5X46_ID		0x54
 
 #define FT_UPGRADE_AA		0xAA
 #define FT_UPGRADE_55		0x55
 
 #define FT_FW_MIN_SIZE		8
-#define FT_FW_MAX_SIZE		32768
+#define FT_FW_MAX_SIZE		65536
 
 /* Firmware file is not supporting minor and sub minor so use 0 */
 #define FT_FW_FILE_MAJ_VER(x)	((x)->data[(x)->size - 2])
@@ -155,6 +163,9 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 
 #define FT_FW_FILE_MAJ_VER_FT6X36(x)	((x)->data[0x10a])
 #define FT_FW_FILE_VENDOR_ID_FT6X36(x)	((x)->data[0x108])
+
+#define FT_SYSFS_TS_INFO		"ts_info"
+
 
 /**
 * Application data verification will be run before upgrade flow.
@@ -182,7 +193,7 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 #define FT_EARSE_DLY_MS		100
 #define FT_55_AA_DLY_NS		5000
 
-#define FT_UPGRADE_LOOP		30
+#define FT_UPGRADE_LOOP		5
 #define FT_CAL_START		0x04
 #define FT_CAL_FIN		0x00
 #define FT_CAL_STORE		0x05
@@ -207,8 +218,6 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 #define PINCTRL_STATE_SUSPEND	"pmx_ts_suspend"
 #define PINCTRL_STATE_RELEASE	"pmx_ts_release"
 
-static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
-
 enum {
 	FT_BLOADER_VERSION_LZ4 = 0,
 	FT_BLOADER_VERSION_Z7 = 1,
@@ -222,17 +231,8 @@ enum {
 	FT_FT5336_FAMILY_ID_0x14 = 0x14,
 };
 
-#define FT_STORE_TS_INFO(buf, id, fw_maj, fw_min, fw_sub_min) \
-			snprintf(buf, FT_INFO_MAX_LEN, \
-				"vendor name = Focaltech\n" \
-				"model = 0x%x\n" \
-				"fw_version = %d.%d.%d\n", \
-				id, fw_maj, fw_min, fw_sub_min)
-#define FT_TS_INFO_SYSFS_DIR_NAME "ts_info"
-static char *ts_info_buff;
-
-#define FT_STORE_TS_DBG_INFO(buf, id, name, max_tch, group_id, \
-			fw_vkey_support, fw_name, fw_maj, fw_min, fw_sub_min) \
+#define FT_STORE_TS_INFO(buf, id, name, max_tch, group_id, fw_vkey_support, \
+			fw_name, fw_maj, fw_min, fw_sub_min) \
 			snprintf(buf, FT_INFO_MAX_LEN, \
 				"controller\t= focaltech\n" \
 				"model\t\t= 0x%x\n" \
@@ -249,26 +249,33 @@ static char *ts_info_buff;
 
 #define FT_DEBUG_DIR_NAME	"ts_debug"
 
+struct ft5x06_ts_gesture_touch {
+	int x, y;
+	cputime64_t time;
+};
 struct ft5x06_ts_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
 	const struct ft5x06_ts_platform_data *pdata;
+	struct ft5x06_psensor_platform_data *psensor_pdata;
 	struct ft5x06_gesture_platform_data *gesture_pdata;
 	struct regulator *vdd;
 	struct regulator *vcc_i2c;
-	struct mutex ft_clk_io_ctrl_mutex;
 	char fw_name[FT_FW_NAME_MAX_LEN];
 	bool loading_fw;
 	u8 family_id;
 	struct dentry *dir;
 	u16 addr;
 	bool suspended;
+	struct input_dev * power_dev;
+	struct ft5x06_ts_gesture_touch prev_touch; 
+	int dt2w_exec;
 	char *ts_info;
 	u8 *tch_data;
 	u32 tch_data_len;
 	u8 fw_ver[3];
 	u8 fw_vendor_id;
-	struct kobject *ts_info_kobj;
+	struct kobject ts_info_kobj;
 #if defined(CONFIG_FB)
 	struct work_struct fb_notify_work;
 	struct notifier_block fb_notif;
@@ -279,254 +286,35 @@ struct ft5x06_ts_data {
 	struct pinctrl_state *pinctrl_state_active;
 	struct pinctrl_state *pinctrl_state_suspend;
 	struct pinctrl_state *pinctrl_state_release;
-#if defined(CONFIG_FT_SECURE_TOUCH)
-	atomic_t st_enabled;
-	atomic_t st_pending_irqs;
-	struct completion st_powerdown;
-	struct completion st_irq_processed;
-	bool st_initialized;
-	struct clk *core_clk;
-	struct clk *iface_clk;
-#endif
 };
+
+static DEFINE_MUTEX(i2c_rw_access);
 
 static int ft5x06_ts_start(struct device *dev);
 static int ft5x06_ts_stop(struct device *dev);
 
-#if defined(CONFIG_FT_SECURE_TOUCH)
-static void ft5x06_secure_touch_init(struct ft5x06_ts_data *data)
-{
-	data->st_initialized = 0;
-
-	init_completion(&data->st_powerdown);
-	init_completion(&data->st_irq_processed);
-
-	/* Get clocks */
-	data->core_clk = devm_clk_get(&data->client->dev, "core_clk");
-	if (IS_ERR(data->core_clk)) {
-		data->core_clk = NULL;
-		dev_warn(&data->client->dev,
-			"%s: core_clk is not defined\n", __func__);
-	}
-
-	data->iface_clk = devm_clk_get(&data->client->dev, "iface_clk");
-	if (IS_ERR(data->iface_clk)) {
-		data->iface_clk = NULL;
-		dev_warn(&data->client->dev,
-			"%s: iface_clk is not defined", __func__);
-	}
-	data->st_initialized = 1;
-}
-
-static void ft5x06_secure_touch_notify(struct ft5x06_ts_data *data)
-{
-	sysfs_notify(&data->input_dev->dev.kobj, NULL, "secure_touch");
-}
-
-static irqreturn_t ft5x06_filter_interrupt(struct ft5x06_ts_data *data)
-{
-	if (atomic_read(&data->st_enabled)) {
-		if (atomic_cmpxchg(&data->st_pending_irqs, 0, 1) == 0) {
-			reinit_completion(&data->st_irq_processed);
-			ft5x06_secure_touch_notify(data);
-			wait_for_completion_interruptible(
-						&data->st_irq_processed);
-		}
-		return IRQ_HANDLED;
-	}
-	return IRQ_NONE;
-}
-
-/*
- * 'blocking' variable will have value 'true' when we want to prevent the driver
- * from accessing the xPU/SMMU protected HW resources while the session is
- * active.
- */
-static void ft5x06_secure_touch_stop(struct ft5x06_ts_data *data, bool blocking)
-{
-	if (atomic_read(&data->st_enabled)) {
-		atomic_set(&data->st_pending_irqs, -1);
-		ft5x06_secure_touch_notify(data);
-		if (blocking)
-			wait_for_completion_interruptible(
-						&data->st_powerdown);
-	}
-}
-
-static int ft5x06_clk_prepare_enable(struct ft5x06_ts_data *data)
-{
-	int ret;
-
-	ret = clk_prepare_enable(data->iface_clk);
-	if (ret) {
-		dev_err(&data->client->dev,
-			"error on clk_prepare_enable(iface_clk):%d\n", ret);
-		return ret;
-	}
-
-	ret = clk_prepare_enable(data->core_clk);
-	if (ret) {
-		clk_disable_unprepare(data->iface_clk);
-		dev_err(&data->client->dev,
-			"error clk_prepare_enable(core_clk):%d\n", ret);
-	}
-	return ret;
-}
-
-static void ft5x06_clk_disable_unprepare(struct ft5x06_ts_data *data)
-{
-	clk_disable_unprepare(data->core_clk);
-	clk_disable_unprepare(data->iface_clk);
-}
-
-static int ft5x06_bus_get(struct ft5x06_ts_data *data)
-{
-	int retval;
-
-	mutex_lock(&data->ft_clk_io_ctrl_mutex);
-	retval = pm_runtime_get_sync(data->client->adapter->dev.parent);
-	if (retval >= 0 &&  data->core_clk != NULL && data->iface_clk != NULL) {
-		retval = ft5x06_clk_prepare_enable(data);
-		if (retval)
-			pm_runtime_put_sync(data->client->adapter->dev.parent);
-	}
-	mutex_unlock(&data->ft_clk_io_ctrl_mutex);
-	return retval;
-}
-
-static void ft5x06_bus_put(struct ft5x06_ts_data *data)
-{
-	mutex_lock(&data->ft_clk_io_ctrl_mutex);
-	if (data->core_clk != NULL && data->iface_clk != NULL)
-		ft5x06_clk_disable_unprepare(data);
-	pm_runtime_put_sync(data->client->adapter->dev.parent);
-	mutex_unlock(&data->ft_clk_io_ctrl_mutex);
-}
-
-static ssize_t ft5x06_secure_touch_enable_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
-
-	return scnprintf(buf, PAGE_SIZE, "%d", atomic_read(&data->st_enabled));
-}
-
-/*
- * Accept only "0" and "1" valid values.
- * "0" will reset the st_enabled flag, then wake up the reading process and
- * the interrupt handler.
- * The bus driver is notified via pm_runtime that it is not required to stay
- * awake anymore.
- * It will also make sure the queue of events is emptied in the controller,
- * in case a touch happened in between the secure touch being disabled and
- * the local ISR being ungated.
- * "1" will set the st_enabled flag and clear the st_pending_irqs flag.
- * The bus driver is requested via pm_runtime to stay awake.
- */
-static ssize_t ft5x06_secure_touch_enable_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
-	unsigned long value;
-	int err = 0;
-
-	if (count > 2)
-		return -EINVAL;
-	err = kstrtoul(buf, 10, &value);
-	if (err != 0)
-		return err;
-
-	if (!data->st_initialized)
-		return -EIO;
-
-	err = count;
-	switch (value) {
-	case 0:
-		if (atomic_read(&data->st_enabled) == 0)
-			break;
-		ft5x06_bus_put(data);
-		atomic_set(&data->st_enabled, 0);
-		ft5x06_secure_touch_notify(data);
-		complete(&data->st_irq_processed);
-		ft5x06_ts_interrupt(data->client->irq, data);
-		complete(&data->st_powerdown);
-		break;
-
-	case 1:
-		if (atomic_read(&data->st_enabled)) {
-			err = -EBUSY;
-			break;
-		}
-		synchronize_irq(data->client->irq);
-		if (ft5x06_bus_get(data) < 0) {
-			dev_err(&data->client->dev, "ft5x06_bus_get failed\n");
-			err = -EIO;
-			break;
-		}
-		reinit_completion(&data->st_powerdown);
-		reinit_completion(&data->st_irq_processed);
-		atomic_set(&data->st_enabled, 1);
-		atomic_set(&data->st_pending_irqs,  0);
-		break;
-
-	default:
-		dev_err(&data->client->dev, "unsupported value: %lu\n", value);
-		err = -EINVAL;
-		break;
-	}
-	return err;
-}
-
-/*
- * This function returns whether there are pending interrupts, or
- * other error conditions that need to be signaled to the userspace library,
- * according tot he following logic:
- * - st_enabled is 0 if secure touch is not enabled, returning -EBADF
- * - st_pending_irqs is -1 to signal that secure touch is in being stopped,
- *   returning -EINVAL
- * - st_pending_irqs is 1 to signal that there is a pending irq, returning
- *   the value "1" to the sysfs read operation
- * - st_pending_irqs is 0 (only remaining case left) if the pending interrupt
- *   has been processed, so the interrupt handler can be allowed to continue.
- */
-static ssize_t ft5x06_secure_touch_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
-	int val = 0;
-
-	if (atomic_read(&data->st_enabled) == 0)
-		return -EBADF;
-	if (atomic_cmpxchg(&data->st_pending_irqs, -1, 0) == -1)
-		return -EINVAL;
-	if (atomic_cmpxchg(&data->st_pending_irqs, 1, 0) == 1)
-		val = 1;
-	else
-		complete(&data->st_irq_processed);
-	return scnprintf(buf, PAGE_SIZE, "%u", val);
-}
-#else
-static void ft5x06_secure_touch_init(struct ft5x06_ts_data *data)
-{
-}
-static irqreturn_t ft5x06_filter_interrupt(struct ft5x06_ts_data *data)
-{
-	return IRQ_NONE;
-}
-static void ft5x06_secure_touch_stop(struct ft5x06_ts_data *data, bool blocking)
-{
-}
-#endif
-
-static struct device_attribute attrs[] = {
-#if defined(CONFIG_FT_SECURE_TOUCH)
-		__ATTR(secure_touch_enable, (S_IRUGO | S_IWUSR | S_IWGRP),
-				ft5x06_secure_touch_enable_show,
-				ft5x06_secure_touch_enable_store),
-		__ATTR(secure_touch, S_IRUGO ,
-				ft5x06_secure_touch_show, NULL),
-#endif
+static struct sensors_classdev __maybe_unused sensors_proximity_cdev = {
+	.name = "ft5x06-proximity",
+	.vendor = "FocalTech",
+	.version = 1,
+	.handle = SENSORS_PROXIMITY_HANDLE,
+	.type = SENSOR_TYPE_PROXIMITY,
+	.max_range = "5.0",
+	.resolution = "5.0",
+	.sensor_power = "0.1",
+	.min_delay = 0,
+	.fifo_reserved_event_count = 0,
+	.fifo_max_event_count = 0,
+	.enabled = 0,
+	.delay_msec = 200,
+	.sensors_enable = NULL,
+	.sensors_poll_delay = NULL,
 };
+
+static inline bool ft5x06_psensor_support_enabled(void)
+{
+	return config_enabled(CONFIG_TOUCHSCREEN_FT5X06_PSENSOR);
+}
 
 static inline bool ft5x06_gesture_support_enabled(void)
 {
@@ -537,6 +325,8 @@ static int ft5x06_i2c_read(struct i2c_client *client, char *writebuf,
 			   int writelen, char *readbuf, int readlen)
 {
 	int ret;
+
+	mutex_lock(&i2c_rw_access);
 
 	if (writelen > 0) {
 		struct i2c_msg msgs[] = {
@@ -570,6 +360,7 @@ static int ft5x06_i2c_read(struct i2c_client *client, char *writebuf,
 		if (ret < 0)
 			dev_err(&client->dev, "%s:i2c read error.\n", __func__);
 	}
+	mutex_unlock(&i2c_rw_access);
 	return ret;
 }
 
@@ -586,9 +377,11 @@ static int ft5x06_i2c_write(struct i2c_client *client, char *writebuf,
 			 .buf = writebuf,
 		 },
 	};
+	mutex_lock(&i2c_rw_access);
 	ret = i2c_transfer(client->adapter, msgs, 1);
 	if (ret < 0)
 		dev_err(&client->dev, "%s: i2c write error.\n", __func__);
+	mutex_unlock(&i2c_rw_access);
 
 	return ret;
 }
@@ -607,6 +400,85 @@ static int ft5x0x_read_reg(struct i2c_client *client, u8 addr, u8 *val)
 {
 	return ft5x06_i2c_read(client, &addr, 1, val, 1);
 }
+
+#ifdef CONFIG_TOUCHSCREEN_FT5X06_PSENSOR
+static void ft5x06_psensor_enable(struct ft5x06_ts_data *data, int enable)
+{
+	u8 state;
+	int ret = -1;
+
+	if (data->client == NULL)
+		return;
+
+	ft5x0x_read_reg(data->client, FT_REG_PSENSOR_ENABLE, &state);
+	if (enable)
+		state |= FT_PSENSOR_ENABLE_MASK;
+	else
+		state &= ~FT_PSENSOR_ENABLE_MASK;
+
+	ret = ft5x0x_write_reg(data->client, FT_REG_PSENSOR_ENABLE, state);
+	if (ret < 0)
+		dev_err(&data->client->dev,
+			"write psensor switch command failed\n");
+	return;
+}
+
+static int ft5x06_psensor_enable_set(struct sensors_classdev *sensors_cdev,
+		unsigned int enable)
+{
+	struct ft5x06_psensor_platform_data *psensor_pdata =
+		container_of(sensors_cdev,
+			struct ft5x06_psensor_platform_data, ps_cdev);
+	struct ft5x06_ts_data *data = psensor_pdata->data;
+	struct input_dev *input_dev = data->psensor_pdata->input_psensor_dev;
+
+	mutex_lock(&input_dev->mutex);
+	ft5x06_psensor_enable(data, enable);
+	psensor_pdata->tp_psensor_data = FT_PSENSOR_ORIGINAL_STATE_FAR;
+	if (enable)
+		psensor_pdata->tp_psensor_opened = 1;
+	else
+		psensor_pdata->tp_psensor_opened = 0;
+	mutex_unlock(&input_dev->mutex);
+	return enable;
+}
+
+static int ft5x06_read_tp_psensor_data(struct ft5x06_ts_data *data)
+{
+	u8 psensor_status;
+	char tmp;
+	int ret = 1;
+
+	ft5x0x_read_reg(data->client,
+			FT_REG_PSENSOR_STATUS, &psensor_status);
+
+	tmp = data->psensor_pdata->tp_psensor_data;
+	if (psensor_status == FT_PSENSOR_STATUS_NEAR)
+		data->psensor_pdata->tp_psensor_data =
+						FT_PSENSOR_FAR_TO_NEAR;
+	else if (psensor_status == FT_PSENSOR_STATUS_FAR)
+		data->psensor_pdata->tp_psensor_data =
+						FT_PSENSOR_NEAR_TO_FAR;
+
+	if (tmp != data->psensor_pdata->tp_psensor_data) {
+		dev_dbg(&data->client->dev,
+				"%s sensor data changed\n", __func__);
+		ret = 0;
+	}
+	return ret;
+}
+#else
+static int ft5x06_psensor_enable_set(struct sensors_classdev *sensors_cdev,
+		unsigned int enable)
+{
+	return enable;
+}
+
+static int ft5x06_read_tp_psensor_data(struct ft5x06_ts_data *data)
+{
+	return 0;
+}
+#endif
 
 #ifdef CONFIG_TOUCHSCREEN_FT5X06_GESTURE
 static ssize_t ft5x06_gesture_enable_to_set_show(struct device *dev,
@@ -706,38 +578,18 @@ static DEVICE_ATTR(pocket, 0664,
 		gesture_in_pocket_mode_show,
 		gesture_in_pocket_mode_store);
 
-static int ft5x06_report_gesture_doubleclick(struct input_dev *ip_dev)
-{
-	int i;
-
-	for (i = 0; i < 2; i++) {
-		input_mt_slot(ip_dev, FT_GESTURE_DEFAULT_TRACKING_ID);
-		input_mt_report_slot_state(ip_dev, MT_TOOL_FINGER, 1);
-		input_report_abs(ip_dev, ABS_MT_POSITION_X,
-					FT_GESTURE_DOUBLECLICK_COORD_X);
-		input_report_abs(ip_dev, ABS_MT_POSITION_Y,
-					FT_GESTURE_DOUBLECLICK_COORD_Y);
-		input_mt_report_pointer_emulation(ip_dev, false);
-		input_sync(ip_dev);
-		input_mt_slot(ip_dev, FT_GESTURE_DEFAULT_TRACKING_ID);
-		input_mt_report_slot_state(ip_dev, MT_TOOL_FINGER, 0);
-		input_mt_report_pointer_emulation(ip_dev, false);
-		input_sync(ip_dev);
-	}
-	return 0;
-}
-
 static int ft5x06_report_gesture(struct i2c_client *i2c_client,
 		struct input_dev *ip_dev)
 {
-	int i, temp, gesture_data_size;
-	int gesture_coord_x, gesture_coord_y;
+	struct ft5x06_ts_data *data = input_get_drvdata(ip_dev);	
+	u32 x, y;
+	cputime64_t time;
+	u8 ntouch, status;
 	int ret = -1;
-	short pointnum = 0;
 	unsigned char buf[FT_GESTURE_POINTER_NUM_MAX *
 			FT_GESTURE_POINTER_SIZEOF + FT_GESTURE_DATA_HEADER];
 
-	buf[0] = FT_REG_GESTURE_OUTPUT;
+	buf[0] = 0;
 	ret = ft5x06_i2c_read(i2c_client, buf, 1,
 				buf, FT_GESTURE_DATA_HEADER);
 	if (ret < 0) {
@@ -746,50 +598,39 @@ static int ft5x06_report_gesture(struct i2c_client *i2c_client,
 		return ret;
 	}
 
-	/* FW support doubleclick */
-	if (FT_GESTURE_DOUBLECLICK_ID == buf[0]) {
-		ft5x06_report_gesture_doubleclick(ip_dev);
-		return 0;
-	}
+	ntouch = buf[2];
+	status = buf[3] >> 6;
+	//id = buf[5] >> 4;
+	x = (buf[3] & 0x0F) << 8 | (buf[4]);
+	y = (buf[5] & 0x0F) << 8 | (buf[6]);
+	if( x < 100 || x > 980 || y < 100 || y > 1820) return 0;
+	time = ktime_to_ms(ktime_get());
+	//pr_info("t2w: tap = t:%u | s:%u | x:%i y:%i\n", ntouch, status, x, y);	
 
-	pointnum = (short)(buf[1]) & 0xff;
-	gesture_data_size = pointnum * FT_GESTURE_POINTER_SIZEOF +
-			FT_GESTURE_DATA_HEADER;
-	buf[0] = FT_REG_GESTURE_OUTPUT;
-	temp = gesture_data_size / I2C_TRANSFER_MAX_BYTE;
-	for (i = 0; i < temp; i++)
-		ret = ft5x06_i2c_read(i2c_client, buf, ((i == 0) ? 1 : 0),
-			buf + I2C_TRANSFER_MAX_BYTE * i, I2C_TRANSFER_MAX_BYTE);
-	ret = ft5x06_i2c_read(i2c_client, buf, ((temp == 0) ? 1 : 0),
-			buf + I2C_TRANSFER_MAX_BYTE * temp,
-			gesture_data_size - I2C_TRANSFER_MAX_BYTE * temp);
-	if (ret < 0) {
-		dev_err(&i2c_client->dev, "%s read touchdata failed.\n",
-			__func__);
-		return ret;
-	}
+	if ( ntouch <= 1 ) {
+		if (status == FT_TOUCH_DOWN ) {
+				
+			pr_info("t2w: down = x:(%i,%i) y:(%i,%i) t:(%lld)\n", 
+				x, data->prev_touch.x, y, data->prev_touch.y, time-data->prev_touch.time);
 
-	for (i = 0; i < pointnum; i++) {
-		gesture_coord_x = (((s16) buf[FT_GESTURE_DATA_HEADER +
-				(FT_GESTURE_POINTER_SIZEOF * i)]) & 0x0F) << 8 |
-				(((s16) buf[FT_GESTURE_DATA_HEADER + 1 +
-				(FT_GESTURE_POINTER_SIZEOF * i)]) & 0xFF);
-		gesture_coord_y = (((s16) buf[FT_GESTURE_DATA_HEADER + 2 +
-				(FT_GESTURE_POINTER_SIZEOF * i)]) & 0x0F) << 8 |
-				(((s16) buf[FT_GESTURE_DATA_HEADER + 3 +
-				(FT_GESTURE_POINTER_SIZEOF * i)]) & 0xFF);
-		input_mt_slot(ip_dev, FT_GESTURE_DEFAULT_TRACKING_ID);
-		input_mt_report_slot_state(ip_dev, MT_TOOL_FINGER, 1);
-		input_report_abs(ip_dev, ABS_MT_POSITION_X, gesture_coord_x);
-		input_report_abs(ip_dev, ABS_MT_POSITION_Y, gesture_coord_y);
-		input_mt_report_pointer_emulation(ip_dev, false);
-		input_sync(ip_dev);
+			if ( data->dt2w_exec == 0 &&
+				(abs(x - data->prev_touch.x) < 50) &&
+				(abs(y - data->prev_touch.y) < 50) &&
+				(time - data->prev_touch.time < 500)
+				) {
+				data->dt2w_exec = 1;
+				input_report_key(data->power_dev, KEY_WAKEUP, 1);
+				input_report_key(data->power_dev, KEY_WAKEUP, 0);
+				input_sync(data->power_dev);
+				pr_info("t2w: wakeup key sent\n");
+				return 0;				
+			}
+			data->prev_touch.x = x;
+			data->prev_touch.y = y;
+			data->prev_touch.time = time;
+			data->dt2w_exec = 0;
+		}
 	}
-	input_mt_slot(ip_dev, FT_GESTURE_DEFAULT_TRACKING_ID);
-	input_mt_report_slot_state(ip_dev, MT_TOOL_FINGER, 0);
-	input_mt_report_pointer_emulation(ip_dev, false);
-	input_sync(ip_dev);
-
 	return 0;
 }
 #else
@@ -854,11 +695,26 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *dev_id)
 		return IRQ_HANDLED;
 	}
 
-	if (IRQ_HANDLED == ft5x06_filter_interrupt(data))
-		return IRQ_HANDLED;
-
 	ip_dev = data->input_dev;
 	buf = data->tch_data;
+
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support &&
+		data->psensor_pdata->tp_psensor_opened) {
+		rc = ft5x06_read_tp_psensor_data(data);
+		if (!rc) {
+			if (data->suspended)
+				pm_wakeup_event(&data->client->dev,
+					FT_PSENSOR_WAKEUP_TIMEOUT);
+			input_report_abs(data->psensor_pdata->input_psensor_dev,
+					ABS_DISTANCE,
+					data->psensor_pdata->tp_psensor_data);
+			input_sync(data->psensor_pdata->input_psensor_dev);
+			if (data->suspended)
+				return IRQ_HANDLED;
+		}
+		if (data->suspended)
+			return IRQ_HANDLED;
+	}
 
 	if (ft5x06_gesture_support_enabled() && data->pdata->gesture_support) {
 		ft5x0x_read_reg(data->client, FT_REG_GESTURE_ENABLE,
@@ -884,10 +740,6 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *dev_id)
 	}
 
 	for (i = 0; i < data->pdata->num_max_touches; i++) {
-		/*
-		 * Getting the finger ID of the touch event incase of
-		 * multiple touch events
-		 */
 		id = (buf[FT_TOUCH_ID_POS + FT_ONE_TCH_LEN * i]) >> 4;
 		if (id >= FT_MAX_ID)
 			break;
@@ -967,26 +819,27 @@ static int ft5x06_gpio_configure(struct ft5x06_ts_data *data, bool on)
 		}
 
 		return 0;
-	}
-	if (gpio_is_valid(data->pdata->irq_gpio))
-		gpio_free(data->pdata->irq_gpio);
-	if (gpio_is_valid(data->pdata->reset_gpio)) {
-		/*
-		 * This is intended to save leakage current
-		 * only. Even if the call(gpio_direction_input)
-		 * fails, only leakage current will be more but
-		 * functionality will not be affected.
-		 */
-		err = gpio_direction_input(data->pdata->reset_gpio);
-		if (err) {
-			dev_err(&data->client->dev,
-				"unable to set direction for gpio [%d]\n",
-				data->pdata->irq_gpio);
+	} else {
+		if (gpio_is_valid(data->pdata->irq_gpio))
+			gpio_free(data->pdata->irq_gpio);
+		if (gpio_is_valid(data->pdata->reset_gpio)) {
+			/*
+			 * This is intended to save leakage current
+			 * only. Even if the call(gpio_direction_input)
+			 * fails, only leakage current will be more but
+			 * functionality will not be affected.
+			 */
+			err = gpio_direction_input(data->pdata->reset_gpio);
+			if (err) {
+				dev_err(&data->client->dev,
+					"unable to set direction for gpio "
+					"[%d]\n", data->pdata->irq_gpio);
+			}
+			gpio_free(data->pdata->reset_gpio);
 		}
-		gpio_free(data->pdata->reset_gpio);
-	}
 
 		return 0;
+	}
 
 err_reset_gpio_dir:
 	if (gpio_is_valid(data->pdata->reset_gpio))
@@ -1005,6 +858,9 @@ static int ft5x06_power_on(struct ft5x06_ts_data *data, bool on)
 	if (!on)
 		goto power_off;
 
+	if (gpio_is_valid(data->pdata->power_ldo_gpio))
+		gpio_set_value(data->pdata->power_ldo_gpio, 1);
+
 	rc = regulator_enable(data->vdd);
 	if (rc) {
 		dev_err(&data->client->dev,
@@ -1022,6 +878,9 @@ static int ft5x06_power_on(struct ft5x06_ts_data *data, bool on)
 	return rc;
 
 power_off:
+	if (gpio_is_valid(data->pdata->power_ldo_gpio))
+		gpio_set_value(data->pdata->power_ldo_gpio, 0);
+
 	rc = regulator_disable(data->vdd);
 	if (rc) {
 		dev_err(&data->client->dev,
@@ -1049,6 +908,21 @@ static int ft5x06_power_init(struct ft5x06_ts_data *data, bool on)
 
 	if (!on)
 		goto pwr_deinit;
+
+	if (gpio_is_valid(data->pdata->power_ldo_gpio)) {
+		printk("%s, power_ldo_gpio\n", __func__);
+		rc = gpio_request(data->pdata->power_ldo_gpio, "focaltech_ldo_gpio");
+		if (rc) {
+			printk("irq gpio request failed\n");
+			goto err_gpio_request;
+		}
+
+		rc = gpio_direction_output(data->pdata->power_ldo_gpio, 1);
+		if (rc) {
+			printk("set_direction for irq gpio failed\n");
+			goto free_ldo_gpio;
+		}
+	}
 
 	data->vdd = regulator_get(&data->client->dev, "vdd");
 	if (IS_ERR(data->vdd)) {
@@ -1094,10 +968,17 @@ reg_vdd_set_vtg:
 	if (regulator_count_voltages(data->vdd) > 0)
 		regulator_set_voltage(data->vdd, 0, FT_VTG_MAX_UV);
 reg_vdd_put:
+free_ldo_gpio:
+	if (gpio_is_valid(data->pdata->power_ldo_gpio))
+		gpio_free(data->pdata->power_ldo_gpio);
 	regulator_put(data->vdd);
+err_gpio_request:
 	return rc;
 
 pwr_deinit:
+	if (gpio_is_valid(data->pdata->power_ldo_gpio))
+		gpio_free(data->pdata->power_ldo_gpio);
+
 	if (regulator_count_voltages(data->vdd) > 0)
 		regulator_set_voltage(data->vdd, 0, FT_VTG_MAX_UV);
 
@@ -1325,7 +1206,17 @@ static int ft5x06_ts_suspend(struct device *dev)
 		return 0;
 	}
 
-	ft5x06_secure_touch_stop(data, true);
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support &&
+		device_may_wakeup(dev) &&
+		data->psensor_pdata->tp_psensor_opened) {
+
+		err = enable_irq_wake(data->client->irq);
+		if (err)
+			dev_err(&data->client->dev,
+				"%s: set_irq_wake failed\n", __func__);
+		data->suspended = true;
+		return err;
+	}
 
 	if (ft5x06_gesture_support_enabled() && data->pdata->gesture_support &&
 		device_may_wakeup(dev) &&
@@ -1353,7 +1244,17 @@ static int ft5x06_ts_resume(struct device *dev)
 		return 0;
 	}
 
-	ft5x06_secure_touch_stop(data, true);
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support &&
+		device_may_wakeup(dev) &&
+		data->psensor_pdata->tp_psensor_opened) {
+		err = disable_irq_wake(data->client->irq);
+		if (err)
+			dev_err(&data->client->dev,
+				"%s: disable_irq_wake failed\n",
+				__func__);
+		data->suspended = false;
+		return err;
+	}
 
 	if (ft5x06_gesture_support_enabled() && data->pdata->gesture_support &&
 		device_may_wakeup(dev) &&
@@ -1457,13 +1358,6 @@ static void ft5x06_ts_early_suspend(struct early_suspend *handler)
 						   struct ft5x06_ts_data,
 						   early_suspend);
 
-	/*
-	 * During early suspend/late resume, the driver doesn't access xPU/SMMU
-	 * protected HW resources. So, there is no compelling need to block,
-	 * but notifying the userspace that a power event has occurred is
-	 * enough. Hence 'blocking' variable can be set to false.
-	 */
-	ft5x06_secure_touch_stop(data, false);
 	ft5x06_ts_suspend(&data->client->dev);
 }
 
@@ -1473,7 +1367,6 @@ static void ft5x06_ts_late_resume(struct early_suspend *handler)
 						   struct ft5x06_ts_data,
 						   early_suspend);
 
-	ft5x06_secure_touch_stop(data, false);
 	ft5x06_ts_resume(&data->client->dev);
 }
 #endif
@@ -1493,7 +1386,7 @@ static int ft5x06_auto_cal(struct i2c_client *client)
 	msleep(2 * data->pdata->soft_rst_dly);
 	for (i = 0; i < FT_CAL_RETRY; i++) {
 		ft5x0x_read_reg(client, FT_REG_CAL, &temp);
-		/* return to normal mode, calibration finish */
+		/*return to normal mode, calibration finish */
 		if (((temp & FT_CAL_MASK) >> FT_4BIT_SHIFT) == FT_CAL_FIN)
 			break;
 	}
@@ -1510,6 +1403,238 @@ static int ft5x06_auto_cal(struct i2c_client *client)
 	/* set to normal mode */
 	ft5x0x_write_reg(client, FT_REG_DEV_MODE, FT_WORKMODE_VALUE);
 	msleep(2 * data->pdata->soft_rst_dly);
+
+	return 0;
+}
+
+int hid_to_i2c(struct i2c_client *client)
+{
+	u8 auc_i2c_write_buf[5] = {0};
+	int bRet = 0;
+
+	auc_i2c_write_buf[0] = 0xeb;
+	auc_i2c_write_buf[1] = 0xaa;
+	auc_i2c_write_buf[2] = 0x09;
+
+	ft5x06_i2c_write(client, auc_i2c_write_buf, 3);
+
+	msleep(10);
+
+	auc_i2c_write_buf[0] = auc_i2c_write_buf[1] = auc_i2c_write_buf[2] = 0;
+
+	ft5x06_i2c_read(client, auc_i2c_write_buf, 0, auc_i2c_write_buf, 3);
+	printk("%s, auc_i2c_write_buf=0x%x, 0x%x, 0x%x\n", __func__, 
+		auc_i2c_write_buf[0], auc_i2c_write_buf[1], auc_i2c_write_buf[2]);
+	if (0xeb == auc_i2c_write_buf[0] && 0xaa == auc_i2c_write_buf[1] && 0x08 == auc_i2c_write_buf[2])
+		bRet = 1;
+	else
+		bRet = 0;
+
+	return bRet;
+}
+
+static int ft5x46_fw_upgrade_start(struct i2c_client *client,
+			const u8 *data, u32 data_len)
+{
+	struct ft5x06_ts_data *ts_data = i2c_get_clientdata(client);
+	struct fw_upgrade_info info = ts_data->pdata->info;
+	u8 w_buf[FT_MAX_WR_BUF] = {0}, r_buf[FT_MAX_RD_BUF] = {0};
+	u8 pkt_buf[FT_FW_PKT_LEN + FT_FW_PKT_META_LEN];
+	int i, j, temp;
+	u32 pkt_num, pkt_len;
+	u8 fw_ecc;
+	int i_ret;
+
+	printk("%s\n", __func__);
+	i_ret = hid_to_i2c(client);
+
+	if (i_ret == 0)
+		printk("[FTS] hid1 change to i2c fail ! \n");
+
+	for (i = 0, j = 0; i < FT_UPGRADE_LOOP; i++) {
+		msleep(FT_EARSE_DLY_MS);
+
+		/*********Step 1:Reset  CTPM *****/
+		/*write 0xaa to register 0xfc */
+		ft5x0x_write_reg(client, 0xfc, FT_UPGRADE_AA);
+		msleep(2);
+		ft5x0x_write_reg(client, 0xfc, FT_UPGRADE_55);
+
+		msleep(200);
+
+		i_ret = hid_to_i2c(client);
+
+		if (i_ret == 0)
+			printk("[FTS] hid%d change to i2c fail ! \n", i);
+		msleep(10);
+
+		/*********Step 2:Enter upgrade mode *****/
+		w_buf[0] = FT_UPGRADE_55;
+		w_buf[1] = FT_UPGRADE_AA;
+		i_ret = ft5x06_i2c_write(client, w_buf, 2);
+
+		if (i_ret < 0) {
+			printk("[FTS] failed writing  0x55 and 0xaa ! \n");
+			continue;
+		}
+
+		/*********Step 3:check READ-ID***********************/
+		msleep(1);
+		w_buf[0] = FT_READ_ID_REG;
+		w_buf[1] = 0x00;
+		w_buf[2] = 0x00;
+		w_buf[3] = 0x00;
+
+		r_buf[0] = r_buf[1] = 0x00;
+
+		ft5x06_i2c_read(client, w_buf, 4, r_buf, 2);
+
+		if (r_buf[0] == 0x54 && r_buf[1] == 0x2c) {
+			printk("Upgrade ID mismatch(%d), IC=0x%x 0x%x, info=0x%x 0x%x\n",
+				i, r_buf[0], r_buf[1], info.upgrade_id_1, info.upgrade_id_2);
+			break;
+		} else {
+			printk("[FTS] Step 3: CTPM ID,ID1 = 0x%x,ID2 = 0x%x\n",
+				r_buf[0], r_buf[1]);
+			continue;
+		}
+	}
+
+	if (i >= FT_UPGRADE_LOOP) {
+		dev_err(&client->dev, "Abort upgrade\n");
+		return -EIO;
+	}
+
+	/******Step 4:erase app and panel paramenter area******/
+	printk("Step 4:erase app and panel paramenter area\n");
+	w_buf[0] = 0x61;
+	ft5x06_i2c_write(client, w_buf, 1);
+	msleep(1350);
+
+	for (i = 0; i < 15; i++) {
+		w_buf[0] = 0x6a;
+		r_buf[0] = r_buf[1] = 0x00;
+		ft5x06_i2c_read(client, w_buf, 1, r_buf, 2);
+
+		if (0xF0 == r_buf[0] && 0xAA == r_buf[1])
+			break;
+		msleep(50);
+
+	}
+
+	w_buf[0] = 0xB0;
+	w_buf[1] = (u8) ((data_len >> 16) & 0xFF);
+	w_buf[2] = (u8) ((data_len >> 8) & 0xFF);
+	w_buf[3] = (u8) (data_len & 0xFF);
+
+	ft5x06_i2c_write(client, w_buf, 4);
+
+	/*********Step 5:write firmware(FW) to ctpm flash*********/
+	fw_ecc = 0;
+	printk("Step 5:write firmware(FW) to ctpm flash\n");
+	temp = 0;
+	pkt_num = (data_len) / FT_FW_PKT_LEN;
+	pkt_buf[0] = 0xbf;
+	pkt_buf[1] = 0x00;
+
+	for (j = 0; j < pkt_num; j++) {
+		temp = j * FT_FW_PKT_LEN;
+		pkt_buf[2] = (u8) (temp >> 8);
+		pkt_buf[3] = (u8) temp;
+		pkt_len = FT_FW_PKT_LEN;
+		pkt_buf[4] = (u8) (pkt_len >> 8);
+		pkt_buf[5] = (u8) pkt_len;
+
+		for (i = 0; i < FT_FW_PKT_LEN; i++) {
+			pkt_buf[6 + i] = data[j * FT_FW_PKT_LEN + i];
+			fw_ecc ^= pkt_buf[6 + i];
+		}
+		ft5x06_i2c_write(client, pkt_buf, FT_FW_PKT_LEN + 6);
+
+		for (i = 0; i < 30; i++) {
+			w_buf[0] = 0x6a;
+			r_buf[0] = r_buf[1] = 0x00;
+			ft5x06_i2c_read(client, w_buf, 1, r_buf, 2);
+
+			if ((j + 0x1000) == (((r_buf[0]) << 8) | r_buf[1]))
+				break;
+			msleep(1);
+
+		}
+	}
+
+	if ((data_len) % FT_FW_PKT_LEN > 0) {
+		temp = pkt_num * FT_FW_PKT_LEN;
+		pkt_buf[2] = (u8) (temp >> 8);
+		pkt_buf[3] = (u8) temp;
+		temp = (data_len) % FT_FW_PKT_LEN;
+		pkt_buf[4] = (u8) (temp >> 8);
+		pkt_buf[5] = (u8) temp;
+
+		for (i = 0; i < temp; i++) {
+			pkt_buf[6 + i] = data[pkt_num * FT_FW_PKT_LEN + i];
+			fw_ecc ^= pkt_buf[6 + i];
+		}
+		ft5x06_i2c_write(client, pkt_buf, temp + 6);
+
+		for (i = 0; i < 30; i++) {
+			w_buf[0] = 0x6a;
+			r_buf[0] = r_buf[1] = 0x00;
+			ft5x06_i2c_read(client, w_buf, 1, r_buf, 2);
+
+			if ((j + 0x1000) == (((r_buf[0]) << 8) | r_buf[1]))
+				break;
+			msleep(1);
+
+		}
+	}
+
+	msleep(50);
+
+/*********Step 6: read out checksum***********************/
+	/*send the opration head */
+	printk("Step 6: read out checksum\n");
+	w_buf[0] = 0x64;
+	ft5x06_i2c_write(client, w_buf, 1);
+	msleep(300);
+
+	temp = 0;
+	w_buf[0] = 0x65;
+	w_buf[1] = (u8)(temp >> 16);
+	w_buf[2] = (u8)(temp >> 8);
+	w_buf[3] = (u8)(temp);
+	temp = data_len;
+	w_buf[4] = (u8)(temp >> 8);
+	w_buf[5] = (u8)(temp);
+	i_ret = ft5x06_i2c_write(client, w_buf, 6);
+	msleep(data_len/256);
+
+	for (i = 0; i < 100; i++) {
+		w_buf[0] = 0x6a;
+		r_buf[0] = r_buf[1] = 0x00;
+		ft5x06_i2c_read(client, w_buf, 1, r_buf, 2);
+
+		if (0xF0 == r_buf[0] && 0x55 == r_buf[1])
+			break;
+		msleep(1);
+
+	}
+	w_buf[0] = 0x66;
+	ft5x06_i2c_read(client, w_buf, 1, r_buf, 1);
+	if (r_buf[0] != fw_ecc) {
+		dev_err(&client->dev, "[FTS]--ecc error! FW=%02x bt_ecc=%02x\n",
+					r_buf[0],
+					fw_ecc);
+
+		return -EIO;
+	}
+	printk(KERN_WARNING "checksum %X %X \n", r_buf[0], fw_ecc);
+
+	/*********Step 7: reset the new FW***********************/
+	printk("Step 7: reset the new FW\n");
+	w_buf[0] = 0x07;
+	ft5x06_i2c_write(client, w_buf, 1);
+	msleep(130);
 
 	return 0;
 }
@@ -1553,12 +1678,12 @@ static int ft5x06_fw_upgrade_start(struct i2c_client *client,
 			msleep(info.delay_55 - (i - (FT_UPGRADE_LOOP / 2)) * 2);
 
 		/* Enter upgrade mode */
-		w_buf[0] = FT_UPGRADE_55;
+/*		w_buf[0] = FT_UPGRADE_55;
 		ft5x06_i2c_write(client, w_buf, 1);
-		usleep_range(FT_55_AA_DLY_NS, FT_55_AA_DLY_NS + 1);
+		usleep(FT_55_AA_DLY_NS);
 		w_buf[0] = FT_UPGRADE_AA;
 		ft5x06_i2c_write(client, w_buf, 1);
-
+*/
 		/* check READ_ID */
 		msleep(info.delay_readid);
 		w_buf[0] = FT_READ_ID_REG;
@@ -1757,7 +1882,6 @@ static int ft5x06_fw_upgrade(struct device *dev, bool force)
 	}
 	fw_file_min = FT_FW_FILE_MIN_VER(fw);
 	fw_file_sub_min = FT_FW_FILE_SUB_MIN_VER(fw);
-	fw_file_vendor_id = FT_FW_FILE_VENDOR_ID(fw);
 
 	dev_info(dev, "Current firmware: %d.%d.%d", data->fw_ver[0],
 				data->fw_ver[1], data->fw_ver[2]);
@@ -1777,7 +1901,13 @@ static int ft5x06_fw_upgrade(struct device *dev, bool force)
 	}
 
 	/* start firmware upgrade */
-	if (FT_FW_CHECK(fw, data)) {
+	if (data->family_id == FT5X46_ID) {
+		rc = ft5x46_fw_upgrade_start(data->client, fw->data, fw->size);
+		if (rc < 0)
+			dev_err(dev, "update failed (%d). try later...\n", rc);
+		else if (data->pdata->info.auto_cal)
+			ft5x06_auto_cal(data->client);
+	} else if (FT_FW_CHECK(fw, data)) {
 		rc = ft5x06_fw_upgrade_start(data->client, fw->data, fw->size);
 		if (rc < 0)
 			dev_err(dev, "update failed (%d). try later...\n", rc);
@@ -1790,13 +1920,11 @@ static int ft5x06_fw_upgrade(struct device *dev, bool force)
 
 	ft5x06_update_fw_ver(data);
 
-	FT_STORE_TS_DBG_INFO(data->ts_info, data->family_id, data->pdata->name,
+	FT_STORE_TS_INFO(data->ts_info, data->family_id, data->pdata->name,
 			data->pdata->num_max_touches, data->pdata->group_id,
 			data->pdata->fw_vkey_support ? "yes" : "no",
 			data->pdata->fw_name, data->fw_ver[0],
 			data->fw_ver[1], data->fw_ver[2]);
-	FT_STORE_TS_INFO(ts_info_buff, data->family_id, data->fw_ver[0],
-			 data->fw_ver[1], data->fw_ver[2]);
 rel_fw:
 	release_firmware(fw);
 	return rc;
@@ -1806,7 +1934,6 @@ static ssize_t ft5x06_update_fw_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
-
 	return snprintf(buf, 2, "%d\n", data->loading_fw);
 }
 
@@ -1877,7 +2004,6 @@ static ssize_t ft5x06_fw_name_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
-
 	return snprintf(buf, FT_FW_NAME_MAX_LEN - 1, "%s\n", data->fw_name);
 }
 
@@ -1899,13 +2025,22 @@ static ssize_t ft5x06_fw_name_store(struct device *dev,
 
 static DEVICE_ATTR(fw_name, 0664, ft5x06_fw_name_show, ft5x06_fw_name_store);
 
-static ssize_t ts_info_show(struct kobject *kobj,
+
+static ssize_t ft5x06_ts_info_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
-	strlcpy(buf, ts_info_buff, FT_INFO_MAX_LEN);
-	return strnlen(buf, FT_INFO_MAX_LEN);
+	struct ft5x06_ts_data *data = container_of(kobj,
+			struct ft5x06_ts_data, ts_info_kobj);
+	return snprintf(buf, FT_INFO_MAX_LEN,
+			"vendor name = Focaltech\n"
+			"model = 0x%x\n"
+			"fw_verion = %d.%d.%d\n",
+			data->family_id, data->fw_ver[0],
+			data->fw_ver[1], data->fw_ver[2]);
 }
-static struct kobj_attribute ts_info_attr = __ATTR_RO(ts_info);
+
+static struct kobj_attribute ts_info_attribute = __ATTR(ts_info,
+					0664, ft5x06_ts_info_show, NULL);
 
 static bool ft5x06_debug_addr_is_valid(int addr)
 {
@@ -1936,7 +2071,7 @@ static int ft5x06_debug_data_get(void *_data, u64 *val)
 {
 	struct ft5x06_ts_data *data = _data;
 	int rc;
-	u8 reg = 0;
+	u8 reg;
 
 	mutex_lock(&data->input_dev->mutex);
 
@@ -2124,6 +2259,11 @@ static int ft5x06_parse_dt(struct device *dev,
 	if (pdata->irq_gpio < 0)
 		return pdata->irq_gpio;
 
+	pdata->power_ldo_gpio = of_get_named_gpio_flags(np, "focaltech,power-gpio",
+				0, &pdata->power_ldo_gpio_flags);
+	if (pdata->power_ldo_gpio < 0)
+		return pdata->power_ldo_gpio;
+
 	pdata->fw_name = "ft_fw.bin";
 	rc = of_property_read_string(np, "focaltech,fw-name", &pdata->fw_name);
 	if (rc && (rc != -EINVAL)) {
@@ -2210,6 +2350,9 @@ static int ft5x06_parse_dt(struct device *dev,
 	pdata->ignore_id_check = of_property_read_bool(np,
 						"focaltech,ignore-id-check");
 
+	pdata->psensor_support = of_property_read_bool(np,
+						"focaltech,psensor-support");
+
 	pdata->gesture_support = of_property_read_bool(np,
 						"focaltech,gesture-support");
 
@@ -2251,19 +2394,22 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
 	struct ft5x06_ts_platform_data *pdata;
+	struct ft5x06_psensor_platform_data *psensor_pdata;
 	struct ft5x06_gesture_platform_data *gesture_pdata;
 	struct ft5x06_ts_data *data;
 	struct input_dev *input_dev;
+	struct input_dev *psensor_input_dev;
 	struct dentry *temp;
-	u8 reg_value = 0;
+	u8 reg_value;
 	u8 reg_addr;
-	int err, len, retval, attr_count;
-
+	int err, len;
 	if (client->dev.of_node) {
 		pdata = devm_kzalloc(&client->dev,
 			sizeof(struct ft5x06_ts_platform_data), GFP_KERNEL);
-		if (!pdata)
+		if (!pdata) {
+			dev_err(&client->dev, "Failed to allocate memory\n");
 			return -ENOMEM;
+		}
 
 		err = ft5x06_parse_dt(&client->dev, pdata);
 		if (err) {
@@ -2285,8 +2431,10 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 
 	data = devm_kzalloc(&client->dev,
 			sizeof(struct ft5x06_ts_data), GFP_KERNEL);
-	if (!data)
+	if (!data) {
+		dev_err(&client->dev, "Not enough memory\n");
 		return -ENOMEM;
+	}
 
 	if (pdata->fw_name) {
 		len = strlen(pdata->fw_name);
@@ -2301,8 +2449,10 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	data->tch_data_len = FT_TCH_LEN(pdata->num_max_touches);
 	data->tch_data = devm_kzalloc(&client->dev,
 				data->tch_data_len, GFP_KERNEL);
-	if (!data->tch_data)
+	if (!data->tch_data) {
+		dev_err(&client->dev, "Not enough memory\n");
 		return -ENOMEM;
+	}
 
 	input_dev = input_allocate_device();
 	if (!input_dev) {
@@ -2422,6 +2572,55 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 		goto free_gpio;
 	}
 
+	if (data->pdata->psensor_support && data->pdata->gesture_support) {
+		dev_err(&client->dev,
+			"Unsupport psensor & gesture at the same time\n");
+		goto irq_free;
+	}
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support) {
+		device_init_wakeup(&client->dev, 1);
+		psensor_pdata = devm_kzalloc(&client->dev,
+				sizeof(struct ft5x06_psensor_platform_data),
+				GFP_KERNEL);
+		if (!psensor_pdata) {
+			dev_err(&client->dev, "Failed to allocate memory\n");
+			goto irq_free;
+		}
+		data->psensor_pdata = psensor_pdata;
+
+		psensor_input_dev = input_allocate_device();
+		if (!psensor_input_dev) {
+			dev_err(&data->client->dev,
+				"Failed to allocate device\n");
+			goto free_psensor_pdata;
+		}
+
+		__set_bit(EV_ABS, psensor_input_dev->evbit);
+		input_set_abs_params(psensor_input_dev,
+					ABS_DISTANCE, 0, 1, 0, 0);
+		psensor_input_dev->name = "proximity";
+		psensor_input_dev->id.bustype = BUS_I2C;
+		psensor_input_dev->dev.parent = &data->client->dev;
+		data->psensor_pdata->input_psensor_dev = psensor_input_dev;
+
+		err = input_register_device(psensor_input_dev);
+		if (err) {
+			dev_err(&data->client->dev,
+				"Unable to register device, err=%d\n", err);
+			goto free_psensor_input_dev;
+		}
+
+		psensor_pdata->ps_cdev = sensors_proximity_cdev;
+		psensor_pdata->ps_cdev.sensors_enable =
+					ft5x06_psensor_enable_set;
+		psensor_pdata->data = data;
+
+		err = sensors_classdev_register(&psensor_input_dev->dev,
+						&psensor_pdata->ps_cdev);
+		if (err)
+			goto unregister_psensor_input_device;
+	}
+
 	if (ft5x06_gesture_support_enabled() && data->pdata->gesture_support) {
 		device_init_wakeup(&client->dev, 1);
 		gesture_pdata = devm_kzalloc(&client->dev,
@@ -2429,10 +2628,11 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 				GFP_KERNEL);
 		if (!gesture_pdata) {
 			dev_err(&client->dev, "Failed to allocate memory\n");
-			goto free_gesture_dev;
+			goto free_psensor_class_sysfs;
 		}
 		data->gesture_pdata = gesture_pdata;
 		gesture_pdata->data = data;
+		gesture_pdata->gesture_enable_to_set=1;
 
 		gesture_pdata->gesture_class =
 					class_create(THIS_MODULE, "gesture");
@@ -2465,12 +2665,33 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 					"sys file creation failed\n");
 			goto free_enable_sys;
 		}
+
+		// Gesture
+		data->dt2w_exec = 0;
+		memset(&data->prev_touch, 0, sizeof(data->prev_touch));
+		data->power_dev = input_allocate_device();
+		if (!data->power_dev)
+		{
+			dev_err(gesture_pdata->dev, "failed to allocate power key\n");
+			goto free_pocket_sys;
+		}
+
+		input_set_capability(data->power_dev, EV_KEY, KEY_WAKEUP);
+		data->power_dev->name = "ft5x06_ts_power";
+		data->power_dev->phys = "ft5x06_ts_power/input0";
+
+		err = input_register_device(data->power_dev);
+		if (err) {
+			dev_err(gesture_pdata->dev, "failed to register power key device\n");
+			goto free_alloc_power_dev;
+		}
+
 	}
 
 	err = device_create_file(&client->dev, &dev_attr_fw_name);
 	if (err) {
 		dev_err(&client->dev, "sys file creation failed\n");
-		goto free_pocket_sys;
+		goto free_reg_power_dev;
 	}
 
 	err = device_create_file(&client->dev, &dev_attr_update_fw);
@@ -2526,8 +2747,10 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 
 	data->ts_info = devm_kzalloc(&client->dev,
 				FT_INFO_MAX_LEN, GFP_KERNEL);
-	if (!data->ts_info)
+	if (!data->ts_info) {
+		dev_err(&client->dev, "Not enough memory\n");
 		goto free_debug_dir;
+	}
 
 	/*get some register information */
 	reg_addr = FT_REG_POINT_RATE;
@@ -2545,50 +2768,28 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	dev_dbg(&client->dev, "touch threshold = %d\n", reg_value * 4);
 
 	/*creation touch panel info kobj*/
-	data->ts_info_kobj = kobject_create_and_add(FT_TS_INFO_SYSFS_DIR_NAME,
-					kernel_kobj);
-	if (!data->ts_info_kobj) {
-		dev_err(&client->dev, "kobject creation failed.\n");
+	data->ts_info_kobj = *(kobject_create_and_add(FT_SYSFS_TS_INFO,
+					kernel_kobj));
+	if (!&(data->ts_info_kobj)) {
+		dev_err(&client->dev, "kob creation failed .\n");
 	} else {
-		err = sysfs_create_file(data->ts_info_kobj, &ts_info_attr.attr);
+		err = sysfs_create_file(&(data->ts_info_kobj),
+					&ts_info_attribute.attr);
 		if (err) {
-			kobject_put(data->ts_info_kobj);
-			dev_err(&client->dev, "sysfs creation failed.\n");
-		} else {
-			ts_info_buff = devm_kzalloc(&client->dev,
-						 FT_INFO_MAX_LEN, GFP_KERNEL);
-			if (!ts_info_buff)
-				goto free_debug_dir;
-		}
-	}
-
-	/*Initialize secure touch */
-	ft5x06_secure_touch_init(data);
-	ft5x06_secure_touch_stop(data, true);
-	mutex_init(&(data->ft_clk_io_ctrl_mutex));
-
-	/* Creation of secure touch sysfs files */
-	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
-		retval = sysfs_create_file(&data->input_dev->dev.kobj,
-						&attrs[attr_count].attr);
-		if (retval < 0) {
-			dev_err(&client->dev,
-				"%s: Failed to create sysfs attributes\n",
-							__func__);
-			goto free_secure_touch_sysfs;
+			kobject_put(&(data->ts_info_kobj));
+			dev_err(&client->dev, "sysfs create fail .\n");
 		}
 	}
 
 	ft5x06_update_fw_ver(data);
 	ft5x06_update_fw_vendor_id(data);
 
-	FT_STORE_TS_DBG_INFO(data->ts_info, data->family_id, data->pdata->name,
+	FT_STORE_TS_INFO(data->ts_info, data->family_id, data->pdata->name,
 			data->pdata->num_max_touches, data->pdata->group_id,
 			data->pdata->fw_vkey_support ? "yes" : "no",
 			data->pdata->fw_name, data->fw_ver[0],
 			data->fw_ver[1], data->fw_ver[2]);
-	FT_STORE_TS_INFO(ts_info_buff, data->family_id, data->fw_ver[0],
-			 data->fw_ver[1], data->fw_ver[2]);
+
 #if defined(CONFIG_FB)
 	INIT_WORK(&data->fb_notify_work, fb_notify_resume_work);
 	data->fb_notif.notifier_call = fb_notifier_callback;
@@ -2607,11 +2808,6 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 #endif
 	return 0;
 
-free_secure_touch_sysfs:
-	for (attr_count--; attr_count >= 0; attr_count--) {
-		sysfs_remove_file(&data->input_dev->dev.kobj,
-					&attrs[attr_count].attr);
-	}
 free_debug_dir:
 	debugfs_remove_recursive(data->dir);
 free_force_update_fw_sys:
@@ -2620,6 +2816,12 @@ free_update_fw_sys:
 	device_remove_file(&client->dev, &dev_attr_update_fw);
 free_fw_name_sys:
 	device_remove_file(&client->dev, &dev_attr_fw_name);
+free_reg_power_dev:
+	if (ft5x06_gesture_support_enabled() && data->pdata->gesture_support)
+		input_unregister_device(data->power_dev);
+free_alloc_power_dev:
+	if (ft5x06_gesture_support_enabled() && data->pdata->gesture_support)
+		input_free_device(data->power_dev);
 free_pocket_sys:
 	if (ft5x06_gesture_support_enabled() && data->pdata->gesture_support)
 		device_remove_file(&client->dev, &dev_attr_pocket);
@@ -2637,7 +2839,28 @@ free_gesture_pdata:
 		devm_kfree(&client->dev, gesture_pdata);
 		data->gesture_pdata = NULL;
 	}
+free_psensor_class_sysfs:
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support)
+		sensors_classdev_unregister(&psensor_pdata->ps_cdev);
+unregister_psensor_input_device:
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support)
+		input_unregister_device(data->psensor_pdata->input_psensor_dev);
+free_psensor_input_dev:
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support)
+		input_free_device(data->psensor_pdata->input_psensor_dev);
+free_psensor_pdata:
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support) {
+		devm_kfree(&client->dev, psensor_pdata);
+		data->psensor_pdata = NULL;
+	}
+irq_free:
+	if ((ft5x06_psensor_support_enabled() &&
+		data->pdata->psensor_support) ||
+		(ft5x06_gesture_support_enabled() &&
+		data->pdata->gesture_support))
 
+		device_init_wakeup(&client->dev, 0);
+	free_irq(client->irq, data);
 free_gpio:
 	if (gpio_is_valid(pdata->reset_gpio))
 		gpio_free(pdata->reset_gpio);
@@ -2672,16 +2895,27 @@ unreg_inputdev:
 static int ft5x06_ts_remove(struct i2c_client *client)
 {
 	struct ft5x06_ts_data *data = i2c_get_clientdata(client);
-	int retval, attr_count;
+	int retval;
 
 	if (ft5x06_gesture_support_enabled() && data->pdata->gesture_support) {
 		device_init_wakeup(&client->dev, 0);
+		input_unregister_device(data->power_dev);
+		input_free_device(data->power_dev);
 		device_remove_file(&client->dev, &dev_attr_pocket);
 		device_remove_file(&client->dev, &dev_attr_enable);
 		device_destroy(data->gesture_pdata->gesture_class, 0);
 		class_destroy(data->gesture_pdata->gesture_class);
 		devm_kfree(&client->dev, data->gesture_pdata);
 		data->gesture_pdata = NULL;
+	}
+
+	if (ft5x06_psensor_support_enabled() && data->pdata->psensor_support) {
+
+		device_init_wakeup(&client->dev, 0);
+		sensors_classdev_unregister(&data->psensor_pdata->ps_cdev);
+		input_unregister_device(data->psensor_pdata->input_psensor_dev);
+		devm_kfree(&client->dev, data->psensor_pdata);
+		data->psensor_pdata = NULL;
 	}
 
 	debugfs_remove_recursive(data->dir);
@@ -2715,11 +2949,6 @@ static int ft5x06_ts_remove(struct i2c_client *client)
 		}
 	}
 
-	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
-		sysfs_remove_file(&data->input_dev->dev.kobj,
-					&attrs[attr_count].attr);
-	}
-
 	if (data->pdata->power_on)
 		data->pdata->power_on(false);
 	else
@@ -2731,7 +2960,7 @@ static int ft5x06_ts_remove(struct i2c_client *client)
 		ft5x06_power_init(data, false);
 
 	input_unregister_device(data->input_dev);
-	kobject_put(data->ts_info_kobj);
+	kobject_put(&(data->ts_info_kobj));
 	return 0;
 }
 
@@ -2779,3 +3008,4 @@ module_exit(ft5x06_ts_exit);
 
 MODULE_DESCRIPTION("FocalTech ft5x06 TouchScreen driver");
 MODULE_LICENSE("GPL v2");
+
