@@ -20,6 +20,12 @@ config FINGERPRINT_GOODIX_GF316M
   help
     Goodix Fingerprint chip GF316M Driver
 
+config FINGERPRINT_GOODIX_GF5216
+  bool FINGERPRINT_GOODIX_GF5216
+  default n
+  help
+    Goodix Fingerprint chip GF5216 Driver
+
 config FINGERPRINT_ELAN_96SA_QSEE
   bool FINGERPRINT_ELAN_96SA_QSEE
   default n
