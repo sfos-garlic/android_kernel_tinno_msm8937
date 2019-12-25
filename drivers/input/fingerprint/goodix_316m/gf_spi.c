@@ -117,7 +117,7 @@ static int ftm_gfx_irq_state = 0;
 static int ftm_gfx_irq_send_key = 0;
 
 //for lib version
-#define GF_MAX_LIB_BUF    50
+#define GF_MAX_LIB_BUF    256
 static char gf_lib_ver_buf[GF_MAX_LIB_BUF] = "unknow";
 
 
@@ -797,6 +797,9 @@ static int gf_probe(struct platform_device *pdev)
 
 	wake_lock_init(&fg_wake_lock, WAKE_LOCK_SUSPEND, "goodix_wake_lock");
 
+	g_fp_match_flag = 1;
+	full_fp_chip_name(GF_DEV_NAME);
+
 	return status;
 
 err_deinit_regulator:
@@ -930,10 +933,15 @@ static struct platform_driver gf_driver = {
 static int __init gf_init(void)
 {
 	int status;
-
-	//return 1;
-
 	FUNC_ENTRY();
+
+	printk(KERN_ERR" goodix gfx1xm gf_init ========.\n");
+
+	if(1 == g_fp_match_flag) {
+		pr_info("goodix gfx1xm  gf_init  --fingerpirnt have been matched!!! \n");
+		return -ENODEV;
+	}
+	g_fp_match_flag = 1;
 
 	/* Claim our 256 reserved device numbers.  Then register a class
 	 * that will key udev/mdev to add/remove /dev nodes.  Last, register
