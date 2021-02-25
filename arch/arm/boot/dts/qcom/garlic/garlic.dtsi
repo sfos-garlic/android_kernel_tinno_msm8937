@@ -16,6 +16,7 @@
 #include "garlic-audio.dtsi"
 #include "garlic-camera.dtsi"
 #include "garlic-camera-sensor.dtsi"
+#include "ramoops.dtsi"
 
 /delete-node/ &mtp_batterydata;
 
