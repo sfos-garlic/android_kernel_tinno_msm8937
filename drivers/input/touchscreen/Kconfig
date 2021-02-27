@@ -1225,3 +1225,16 @@ config TOUCHSCREEN_DOUBLETAP2WAKE
 	tristate "DoubleTap2Wake for touchscreens"
 	select TOUCHSCREEN_PREVENT_SLEEP
 	default n
+
+config TOUCHSCREEN_FTS_FT5436
+	tristate "FocalTech touchscreens"
+	depends on I2C
+	help
+	  Say Y here if you have a focaltech touchscreen.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called fts_ts.
+
+ source "drivers/input/touchscreen/FT5436/Kconfig"
