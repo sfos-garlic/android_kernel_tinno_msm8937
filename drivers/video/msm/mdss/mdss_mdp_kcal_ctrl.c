@@ -28,6 +28,21 @@
 #define DEF_PA 0xff
 #define PCC_ADJ 0x80
 
+static unsigned int red_kcal=DEF_PCC;
+module_param(red_kcal, uint, 0444);
+static unsigned int green_kcal=DEF_PCC;
+module_param(green_kcal, uint, 0444);
+static unsigned int blue_kcal=DEF_PCC;
+module_param(blue_kcal, uint, 0444);
+static unsigned int sat_kcal=DEF_PA;
+module_param(sat_kcal, uint, 0444);
+static unsigned int hue_kcal=0x0;
+module_param(hue_kcal, uint, 0444);
+static unsigned int val_kcal=DEF_PA;
+module_param(val_kcal, uint, 0444);
+static unsigned int cont_kcal=DEF_PA;
+module_param(cont_kcal, uint, 0444);
+
 struct kcal_lut_data {
 	int red;
 	int green;
@@ -564,6 +579,10 @@ static int kcal_ctrl_probe(struct platform_device *pdev)
 	lut_data->sat = DEF_PA;
 	lut_data->val = DEF_PA;
 	lut_data->cont = DEF_PA;
+	lut_data->red = red_kcal;
+	lut_data->green = green_kcal;
+	lut_data->blue = blue_kcal;
+	lut_data->hue = hue_kcal;
 
 	//mdss_mdp_kcal_update_pcc(lut_data);
 	//mdss_mdp_kcal_update_pa(lut_data);
