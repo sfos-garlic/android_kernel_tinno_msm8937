@@ -21,10 +21,6 @@ config PRONTO_WLAN
 
 if PRIMA_WLAN != n || PRONTO_WLAN != n
 
-config PRIMA_WLAN_BTAMP
-	bool "Enable the Prima WLAN BT-AMP feature"
-	default n
-
 config PRIMA_WLAN_LFR
 	bool "Enable the Prima WLAN Legacy Fast Roaming feature"
 	default n
@@ -71,6 +67,10 @@ config ENABLE_LINUX_REG
 
 config WLAN_OFFLOAD_PACKETS
 	bool "Enable offload packets feature"
+	default n
+
+config QCOM_TDLS
+	bool "Enable TDLS feature"
 	default n
 
 endif # PRIMA_WLAN || PRONTO_WLAN

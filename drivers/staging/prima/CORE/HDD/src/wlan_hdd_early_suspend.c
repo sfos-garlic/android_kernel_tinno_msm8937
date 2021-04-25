@@ -72,12 +72,6 @@
 #include "cfgApi.h"
 #include <wlan_logging_sock_svc.h>
 
-#ifdef WLAN_BTAMP_FEATURE
-#include "bapApi.h"
-#include "bap_hdd_main.h"
-#include "bap_hdd_misc.h"
-#endif
-
 #include <linux/wcnss_wlan.h>
 #include <linux/inetdevice.h>
 #include <wlan_hdd_cfg.h>
@@ -906,8 +900,10 @@ void hdd_conf_ns_offload(hdd_adapter_t *pAdapter, int fenable)
                                                           SIR_IPV6_ADDR_VALID;
                     offLoadRequest.offloadType =  SIR_IPV6_NS_OFFLOAD;
                     offLoadRequest.enableOrDisable = SIR_OFFLOAD_ENABLE;
+#ifdef FEATURE_WLAN_DIAG_SUPPORT
                     hdd_wlan_offload_event(SIR_IPV6_NS_OFFLOAD,
                                                      SIR_OFFLOAD_ENABLE);
+#endif
 
                     hddLog (VOS_TRACE_LEVEL_INFO,
                        FL("configuredMcastBcastFilter: %d"
@@ -926,9 +922,11 @@ void hdd_conf_ns_offload(hdd_adapter_t *pAdapter, int fenable)
                         offLoadRequest.enableOrDisable =
                             SIR_OFFLOAD_NS_AND_MCAST_FILTER_ENABLE;
                     }
+#ifdef FEATURE_WLAN_DIAG_SUPPORT
                     hdd_wlan_offload_event(
                                   SIR_OFFLOAD_NS_AND_MCAST_FILTER_ENABLE,
                                   SIR_OFFLOAD_ENABLE);
+#endif
                     hddLog(VOS_TRACE_LEVEL_INFO,
                         FL("offload: NS filter programmed %d"),
                         offLoadRequest.enableOrDisable);
@@ -968,8 +966,10 @@ void hdd_conf_ns_offload(hdd_adapter_t *pAdapter, int fenable)
         vos_mem_zero((void *)&offLoadRequest, sizeof(tSirHostOffloadReq));
         offLoadRequest.enableOrDisable = SIR_OFFLOAD_DISABLE;
         offLoadRequest.offloadType =  SIR_IPV6_NS_OFFLOAD;
+#ifdef FEATURE_WLAN_DIAG_SUPPORT
         hdd_wlan_offload_event(SIR_IPV6_NS_OFFLOAD,
                                            SIR_OFFLOAD_DISABLE);
+#endif
 
         for (i = 0; i <  pAdapter->ns_slots; i++)
         {
@@ -1175,8 +1175,10 @@ VOS_STATUS hdd_conf_arp_offload(hdd_adapter_t *pAdapter, int fenable)
        {
            offLoadRequest.offloadType =  SIR_IPV4_ARP_REPLY_OFFLOAD;
            offLoadRequest.enableOrDisable = SIR_OFFLOAD_ENABLE;
+#ifdef FEATURE_WLAN_DIAG_SUPPORT
            hdd_wlan_offload_event(SIR_IPV4_ARP_REPLY_OFFLOAD,
                                            SIR_OFFLOAD_ENABLE);
+#endif
 
            hddLog(VOS_TRACE_LEVEL_INFO, "%s: Enabled", __func__);
 
@@ -1191,8 +1193,10 @@ VOS_STATUS hdd_conf_arp_offload(hdd_adapter_t *pAdapter, int fenable)
                hddLog(VOS_TRACE_LEVEL_INFO,
                       "offload: inside arp offload conditional check");
            }
+#ifdef FEATURE_WLAN_DIAG_SUPPORT
            hdd_wlan_offload_event(SIR_OFFLOAD_ARP_AND_BCAST_FILTER_ENABLE,
                                            SIR_OFFLOAD_ENABLE);
+#endif
 
            hddLog(VOS_TRACE_LEVEL_INFO, "offload: arp filter programmed = %d",
                   offLoadRequest.enableOrDisable);
@@ -1231,8 +1235,10 @@ VOS_STATUS hdd_conf_arp_offload(hdd_adapter_t *pAdapter, int fenable)
        vos_mem_zero((void *)&offLoadRequest, sizeof(tSirHostOffloadReq));
        offLoadRequest.enableOrDisable = SIR_OFFLOAD_DISABLE;
        offLoadRequest.offloadType =  SIR_IPV4_ARP_REPLY_OFFLOAD;
+#ifdef FEATURE_WLAN_DIAG_SUPPORT
        hdd_wlan_offload_event(SIR_IPV4_ARP_REPLY_OFFLOAD,
                                            SIR_OFFLOAD_DISABLE);
+#endif
        if (eHAL_STATUS_SUCCESS !=
                  sme_SetHostOffload(WLAN_HDD_GET_HAL_CTX(pAdapter),
                  pAdapter->sessionId, &offLoadRequest))
@@ -2339,14 +2345,6 @@ VOS_STATUS hdd_wlan_shutdown(void)
    wait_for_completion(&vosSchedContext->RxShutdown);
    vosSchedContext->RxThread = NULL;
 
-#ifdef WLAN_BTAMP_FEATURE
-   vosStatus = WLANBAP_Stop(pVosContext);
-   if (!VOS_IS_STATUS_SUCCESS(vosStatus))
-   {
-       VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-               "%s: Failed to stop BAP",__func__);
-   }
-#endif //WLAN_BTAMP_FEATURE
    vosStatus = vos_wda_shutdown(pVosContext);
    if (!VOS_IS_STATUS_SUCCESS(vosStatus))
    {
@@ -2582,10 +2580,6 @@ VOS_STATUS hdd_wlan_re_init(void)
 #ifdef HAVE_CBC_DONE
    int              max_cbc_retries = 0;
 #endif
-#ifdef WLAN_BTAMP_FEATURE
-   hdd_config_t     *pConfig = NULL;
-   WLANBAP_ConfigType btAmpConfig;
-#endif
 
    struct device *dev = NULL;
    hdd_ssr_timer_del();
@@ -2717,33 +2711,6 @@ VOS_STATUS hdd_wlan_re_init(void)
    }
 #endif
 
-#ifdef WLAN_BTAMP_FEATURE
-   vosStatus = WLANBAP_Open(pVosContext);
-   if(!VOS_IS_STATUS_SUCCESS(vosStatus))
-   {
-     VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-        "%s: Failed to open BAP",__func__);
-      goto err_vosstop;
-   }
-   vosStatus = BSL_Init(pVosContext);
-   if(!VOS_IS_STATUS_SUCCESS(vosStatus))
-   {
-     VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-        "%s: Failed to Init BSL",__func__);
-     goto err_bap_close;
-   }
-   vosStatus = WLANBAP_Start(pVosContext);
-   if (!VOS_IS_STATUS_SUCCESS(vosStatus))
-   {
-       VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-               "%s: Failed to start TL",__func__);
-       goto err_bap_close;
-   }
-   pConfig = pHddCtx->cfg_ini;
-   btAmpConfig.ucPreferredChannel = pConfig->preferredChannel;
-   vosStatus = WLANBAP_SetConfig(&btAmpConfig);
-#endif //WLAN_BTAMP_FEATURE
-
     /* Restart all adapters */
    hdd_start_all_adapters(pHddCtx);
    pHddCtx->last_scan_reject_session_id = 0xFF;
@@ -2808,14 +2775,6 @@ err_bap_stop:
    hdd_unregister_mcast_bcast_filter(pHddCtx);
 #endif
    hdd_close_all_adapters(pHddCtx);
-#ifdef WLAN_BTAMP_FEATURE
-   WLANBAP_Stop(pVosContext);
-#endif
-
-#ifdef WLAN_BTAMP_FEATURE
-err_bap_close:
-   WLANBAP_Close(pVosContext);
-#endif
 
 err_vosstop:
    vos_stop(pVosContext);
