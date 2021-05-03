@@ -1532,7 +1532,7 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags,
 		     (unlikely(rt_task(curr)) &&
 		      (curr->nr_cpus_allowed < 2 ||
 		       curr->prio <= p->prio)))) {
-		int target = find_lowest_rq(p);
+			target = find_lowest_rq(p, sync);
  		/*
 		 * If cpu is non-preemptible, prefer remote cpu
 		 * even if it's running a higher-prio task.

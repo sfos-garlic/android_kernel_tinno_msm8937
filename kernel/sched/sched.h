@@ -1383,7 +1383,6 @@ extern int sched_boost(void);
 #define sched_freq_legacy_mode 1
 #define sched_use_pelt 1
 
-static inline void check_for_migration(struct rq *rq, struct task_struct *p) { }
 static inline void pre_big_task_count_change(void) { }
 static inline void post_big_task_count_change(void) { }
 static inline void set_hmp_defaults(void) { }
@@ -2396,7 +2395,6 @@ static inline u64 irq_time_read(int cpu)
  */
 extern bool task_may_not_preempt(struct task_struct *task, int cpu);
 
-#endif /* CONFIG_SCHED_QHMP */
 static inline void account_reset_rq(struct rq *rq)
 {
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
