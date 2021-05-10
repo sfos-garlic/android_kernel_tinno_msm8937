@@ -4179,8 +4179,10 @@ static void android_disconnect(struct usb_composite_dev *cdev)
 	 */
 	acc_disconnect();
 
+ 	if (dev->connected) {
 	dev->connected = 0;
 	schedule_work(&dev->work);
+ 	}
 }
 
 static struct usb_composite_driver android_usb_driver = {
