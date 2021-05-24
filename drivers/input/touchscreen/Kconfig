@@ -1051,7 +1051,7 @@ config TOUCHSCREEN_GEN_VKEYS
          module will be called gen_vkeys.
 
 config TOUCHSCREEN_FT5X06
-       tristate "FocalTech touchscreens"
+       tristate "FocalTech FT5X06 touchscreen"
        depends on I2C
        help
          Say Y here if you have a ft5X06 touchscreen.
@@ -1077,7 +1077,7 @@ config TOUCHSCREEN_FTS
          module will be called focaltech_fts.
 
 config TOUCHSCREEN_FTS_TINNO
-       bool "FocalTech touchscreens"
+       bool "Focaltech Touchscreen - TINNO"
        depends on I2C
        help
          Say Y here if you have a focaltech touchscreen.
@@ -1195,7 +1195,7 @@ config TOUCHSCREEN_HIMAX_CHIPSET
 source "drivers/input/touchscreen/hxchipset/Kconfig"
 
 config TOUCHSCREEN_FT5364I
-       tristate "FocalTech touchscreens"
+       tristate "FocalTech FT5364I touchscreen"
        depends on I2C
        help
          Say Y here if you have a ft5364I touchscreen.
@@ -1208,7 +1208,7 @@ config TOUCHSCREEN_FT5364I
          module will be called ft5364i_ts.
 
 config TOUCHSCREEN_FT5XX
-       tristate "FocalTech touchscreens"
+       tristate "FocalTech FT5XX touchscreen"
        depends on I2C
        help
          Say Y here if you have a ft5XX touchscreen.

@@ -2,8 +2,8 @@
 # Focaltech Touchscreen driver configuration
 #
 
-config TOUCHSCREEN_FTS
-        bool "Focaltech Touchscreen"
+config TOUCHSCREEN_FTS_TINNO
+        bool "Focaltech Touchscreen - TINNO"
 		depends on I2C
 		default n
 		help
