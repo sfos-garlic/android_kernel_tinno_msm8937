@@ -2134,7 +2134,7 @@ static int ps_notify_callback(struct notifier_block *self,
 	bool present;
 	int retval;
 
-	if ((event == PSY_EVENT_PROP_ADDED || event == PSY_EVENT_PROP_CHANGED)
+	if ((event == PSY_EVENT_PROP_CHANGED)
 		&& psy && psy->get_property && psy->name &&
 		!strncmp(psy->name, "usb", sizeof("usb")) &&
 		ft5x06_data) {
