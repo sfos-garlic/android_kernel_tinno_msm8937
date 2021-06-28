@@ -53,18 +53,18 @@ MODULE_VERSION(DRIVER_VERSION);
 MODULE_LICENSE("GPLv2");
 
 /* Tuneables */
-#define DT2W_DEBUG		0
-#define DT2W_DEFAULT		0
+#define DT2W_DEBUG		1
+#define DT2W_DEFAULT		1
 
 #define DT2W_PWRKEY_DUR		60
 #define DT2W_FEATHER		200
 #define DT2W_TIME		700
 
 /* Half Screen */
-#define HALF_MAX_X		500
-#define HALF_MIN_X		250
-#define HALF_MAX_Y		750
-#define HALF_MIN_Y		500
+#define HALF_MAX_X		845
+#define HALF_MIN_X		235
+#define HALF_MAX_Y		1685
+#define HALF_MIN_Y		235
 
 /* Resources */
 int dt2w_switch = DT2W_DEFAULT;
