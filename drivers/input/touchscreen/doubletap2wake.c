@@ -172,7 +172,7 @@ static void new_touch(int x, int y) {
 static void detect_doubletap2wake(int x, int y)
 {
 	// Update half screen value for y-axis. 720p uses 640 and 1080p uses 960 ;)
-	if (dt2w_switch < 2 && y < 640)
+	if (dt2w_switch < 2 && y < 960)
         	return;
 
 	/* dt2w_feather removed and DT2W_RADIUS added
