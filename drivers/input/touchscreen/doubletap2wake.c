@@ -55,12 +55,12 @@ MODULE_LICENSE("GPLv3");
 
 /* Tuneables */
 #define DT2W_DEBUG		0
-#define DT2W_DEFAULT		2
+#define DT2W_DEFAULT		0
 
-#define DT2W_PWRKEY_DUR		60
-#define DT2W_TIME		400
-#define DT2W_RADIUS		200
-#define VIB_STRENGTH	20
+#define DT2W_PWRKEY_DUR		20
+#define DT2W_TIME		300
+#define DT2W_RADIUS		100
+#define VIB_STRENGTH	65
 
 #define DT2W_OFF 0
 #define DT2W_ON 1
@@ -175,7 +175,7 @@ static void new_touch(int x, int y) {
 static void detect_doubletap2wake(int x, int y)
 {
 	// Update half screen value for y-axis. 720p uses 640 and 1080p uses 960 ;)
-	if (dt2w_switch < 2 && y < 960)
+	if (dt2w_switch < 2 && y < 530)
         	return;
 
 	/* dt2w_feather removed and DT2W_RADIUS added
