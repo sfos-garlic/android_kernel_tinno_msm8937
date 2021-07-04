@@ -70,4 +70,31 @@
 			drive-strength = <2>; /* 2 MA */
 		};
 	};
+
+
+		ltr553_int_active: ltr553_int_active {
+				mux {
+					pins = "gpio43";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio43";
+					drive-strength = <8>;
+					bias-pull-up;
+				};
+		};
+
+		ltr553_int_suspend: ltr553_int_suspend {
+				mux {
+					pins = "gpio43";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio43";
+					drive-strength = <2>;
+					bias-pull-down;
+				};
+		};
 };
