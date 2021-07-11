@@ -798,7 +798,8 @@ static int gf_probe(struct platform_device *pdev)
 	wake_lock_init(&fg_wake_lock, WAKE_LOCK_SUSPEND, "goodix_wake_lock");
 
 	g_fp_match_flag = 1;
-	full_fp_chip_name(GF_DEV_NAME);
+//Don't set full_fp_chip_name as goodix on elan device
+//	full_fp_chip_name(GF_DEV_NAME);
 
 	return status;
 

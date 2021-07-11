@@ -649,7 +649,7 @@ static ssize_t info_show(struct device *dev, struct device_attribute *attr, char
 	if(has_exist) {
 		return sprintf(buf, "%s", m_dev_name);
 	}
-	return sprintf(buf, "%s", "unknow");
+	return sprintf(buf, "%s", "elan_fp");
 }
 
 static ssize_t all_info_show(struct device *dev, struct device_attribute *attr, char *buf)
