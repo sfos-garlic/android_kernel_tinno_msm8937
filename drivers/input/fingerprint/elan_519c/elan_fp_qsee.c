@@ -255,7 +255,7 @@ static long efsa120s_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 			if (elan_request_irq(fp)) {
 				break;
 			}
-			full_fp_chip_name(ELAN_FP_NAME);
+			//full_fp_chip_name(ELAN_FP_NAME);
 		}
 		break;
 	case ID_IOCTL_SET_VERSION: // 100
@@ -624,7 +624,13 @@ static int efsa120s_probe(struct platform_device *pdev)
 	int err = 0;
 
 	ELAN_DEBUG("=====%s() Start=====\n", __func__);
-	ELAN_DEBUG("%s GPIO_FP_ID : %d\n", VERSION_LOG, gpio_get_value(GPIO_FP_ID));
+
+	if (read_fpId_pin_value(&pdev->dev, "qcom,fpid-gpio") == __LOW) {
+		full_fp_chip_name(ELAN_FP_NAME);
+	} else {
+		ELAN_DEBUG("%s, not detect silead hw!\n", __func__);
+		return -1;
+	}
 
 	init_completion(&cmd_done_irq);
 

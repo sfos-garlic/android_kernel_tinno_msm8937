@@ -462,7 +462,7 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 		enable_irq_wake(gf_dev->irq);
 		gf_disable_irq(gf_dev);
-		full_fp_chip_name(GF_DEV_NAME);
+		//full_fp_chip_name(GF_DEV_NAME);
 	}
 	break;
 	case GF_IOC_RELEASEVERSION: {
@@ -692,6 +692,21 @@ static int gf_probe(struct platform_device *pdev)
 	printk(KERN_ERR" goodix gfx1xm gf_probe ========.\n");
 	FUNC_ENTRY();
 
+
+
+#if defined(USE_SPI_BUS)
+	if (read_fpId_pin_value(&spi->dev, "qcom,fpid-gpio") == __HIGH_IMPEDANCE) {
+		pr_warn("%s,spi: detect goodix hw or hw null !\n", __func__);
+	}
+#elif defined(USE_PLATFORM_BUS)
+	if (read_fpId_pin_value(&pdev->dev, "qcom,fpid-gpio") == __HIGH_IMPEDANCE) {
+		pr_warn("%s,platform: detect goodix hw or hw null !\n", __func__);
+	}
+#endif
+	else {
+		pr_warn("%s, not detect goodix hw!\n", __func__);
+		return -1;
+	}
 
 	/* Initialize the driver data */
 	INIT_LIST_HEAD(&gf_dev->device_entry);
