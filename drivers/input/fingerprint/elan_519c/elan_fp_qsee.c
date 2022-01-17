@@ -47,7 +47,7 @@
 
 #define VERSION_LOG	"ELAN FINGER PRINT V1.4.4.1"
 #define ELAN_FP_NAME "elan_fp"
-#define _ELAN_DEBUG_
+//#define _ELAN_DEBUG_
 #ifdef _ELAN_DEBUG_
 static int elan_debug = 1;
 #define ELAN_DEBUG(format, args ...) \

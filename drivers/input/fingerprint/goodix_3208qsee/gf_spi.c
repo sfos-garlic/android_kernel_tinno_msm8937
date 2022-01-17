@@ -81,7 +81,7 @@ static int ftm_gfx_irq_send_key = 0;
 extern char *saved_command_line;
 #define CHARGER_MODE_BOOT   "androidboot.mode=charger"
 /**************************debug******************************/
-#define GF_DEBUG
+//#define GF_DEBUG
 /*#undef  GF_DEBUG*/
 
 #ifdef  GF_DEBUG
