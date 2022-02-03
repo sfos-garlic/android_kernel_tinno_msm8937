@@ -43,7 +43,7 @@ static DECLARE_WAIT_QUEUE_HEAD(suspend_freeze_wait_head);
 enum freeze_state __read_mostly suspend_freeze_state;
 static DEFINE_SPINLOCK(suspend_freeze_lock);
 
-#ifdef CONFIG_MACH_MSM8996_15801
+#ifdef CONFIG_ARCH_MSM8937
 extern void thaw_fingerprintd(void);
 #endif
 
